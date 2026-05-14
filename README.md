@@ -18,8 +18,8 @@ A local web app for marking goal and save timestamps in ball hockey GoPro videos
 # Windows: winget install Gyan.FFmpeg
 # Linux:   sudo apt install ffmpeg
 
-git clone https://github.com/YOUR_USERNAME/goal-timestamp-detector.git
-cd goal-timestamp-detector
+git clone https://github.com/cdeck95/highlight-reel.git
+cd highlight-reel
 pip install -r requirements.txt
 python3 server.py   # then open http://localhost:5001
 ```
@@ -232,10 +232,10 @@ Clips are pre-extracted in the background as you stamp them, so generation is us
 
 In the sidebar footer, the **Clip Settings** panel lets you customise timing and transitions before generating:
 
-| Setting | Default | Description |
-| ------- | ------- | ----------- |
-| Pre-roll | 4.5 s | Seconds before the timestamp to start the clip |
-| Post-roll | 2.5 s | Seconds after the timestamp to end the clip |
+| Setting    | Default         | Description                                                  |
+| ---------- | --------------- | ------------------------------------------------------------ |
+| Pre-roll   | 4.5 s           | Seconds before the timestamp to start the clip               |
+| Post-roll  | 2.5 s           | Seconds after the timestamp to end the clip                  |
 | Transition | Crossfade 0.5 s | How clips are joined — hard cut or crossfade (0.3 s – 2.0 s) |
 
 Changing pre-roll or post-roll after stamping clips will automatically re-extract clips in the background.
