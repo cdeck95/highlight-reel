@@ -1,3 +1,27 @@
 .env
 *_goals.txt
 *_goals.json
+*.mp4
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Runtime data
+session.json
+uploads/*
+outputs/*
+preclips/*
+
+# Keep directory structure for cloners
+!uploads/.gitkeep
+!outputs/.gitkeep
+!preclips/.gitkeep
+
+# OS
+.DS_Store

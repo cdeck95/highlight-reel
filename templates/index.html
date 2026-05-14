@@ -1,0 +1,1838 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Montage Maker</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: #111318;
+        color: #e2e2e8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        min-height: 100vh;
+        overflow: hidden;
+      }
+
+      /* ── Upload screen ───────────────────────────────────────────── */
+      #upload-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 32px;
+        height: 100vh;
+        padding: 40px;
+      }
+
+      .logo {
+        text-align: center;
+      }
+      .logo h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      .logo p {
+        color: #666;
+        margin-top: 6px;
+        font-size: 0.95rem;
+      }
+
+      #drop-zone {
+        width: min(520px, 100%);
+        height: 220px;
+        border: 2px dashed #2e3140;
+        border-radius: 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+        user-select: none;
+      }
+      #drop-zone:hover,
+      #drop-zone.drag-over {
+        border-color: #7c6ff7;
+        background: rgba(124, 111, 247, 0.06);
+      }
+      #drop-zone .dz-icon {
+        font-size: 2.8rem;
+      }
+      #drop-zone .dz-main {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      #drop-zone .dz-sub {
+        color: #555;
+        font-size: 0.82rem;
+      }
+
+      #upload-status {
+        width: min(520px, 100%);
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #upload-status-label {
+        font-size: 0.9rem;
+        color: #aaa;
+      }
+      .progress-track {
+        width: 100%;
+        height: 5px;
+        background: #222430;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #7c6ff7;
+        border-radius: 3px;
+        transition: width 0.3s ease;
+      }
+
+      #skip-transcode-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #555;
+        font-size: 0.82rem;
+        cursor: pointer;
+        user-select: none;
+      }
+      #skip-transcode-wrap input[type="checkbox"] {
+        accent-color: #7c6ff7;
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      #skip-transcode-wrap .skip-note {
+        color: #3a3b50;
+      }
+
+      #resume-wrap {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      #resume-btn {
+        padding: 10px 28px;
+        background: none;
+        border: 1px solid #3a3b50;
+        border-radius: 10px;
+        color: #7c6ff7;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          background 0.15s;
+      }
+      #resume-btn:hover {
+        border-color: #7c6ff7;
+        background: rgba(124, 111, 247, 0.08);
+      }
+      #resume-info {
+        font-size: 0.8rem;
+        color: #555;
+      }
+
+      /* ── Player screen ───────────────────────────────────────────── */
+      #player-screen {
+        display: none;
+        width: 100vw;
+        height: 100vh;
+        flex-direction: row;
+      }
+
+      /* Left: video + hints + download bar */
+      #video-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: #0a0b0f;
+        overflow: hidden;
+      }
+
+      #video-player {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+        object-fit: contain;
+        background: #000;
+        display: block;
+      }
+
+      #key-hints {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        padding: 9px 16px;
+        background: #0d0e14;
+        border-top: 1px solid #1e1f2a;
+        font-size: 0.76rem;
+        color: #555;
+      }
+      #time-display {
+        margin-left: auto;
+        font-family: "SF Mono", "Fira Mono", monospace;
+        font-size: 0.78rem;
+        color: #444;
+        white-space: nowrap;
+      }
+      .hint {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      kbd {
+        background: #1e2030;
+        border: 1px solid #333;
+        border-radius: 4px;
+        padding: 1px 6px;
+        font-family: inherit;
+        font-size: 0.72rem;
+        color: #999;
+      }
+
+      #download-bar {
+        display: none;
+        align-items: center;
+        gap: 14px;
+        padding: 11px 18px;
+        background: #0f1f12;
+        border-top: 1px solid #1e3a22;
+      }
+      #download-link {
+        padding: 8px 22px;
+        background: #3fb950;
+        color: #000;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        white-space: nowrap;
+        transition: background 0.15s;
+      }
+      #download-link:hover {
+        background: #34a044;
+      }
+      #download-note {
+        color: #4a7a52;
+        font-size: 0.82rem;
+      }
+
+      /* ── Scrub bar ───────────────────────────────────────────────── */
+      #scrub-bar {
+        width: 100%;
+        height: 5px;
+        background: #1a1b24;
+        cursor: pointer;
+        position: relative;
+        flex-shrink: 0;
+        transition: height 0.12s;
+      }
+      #scrub-bar:hover,
+      #scrub-bar.scrubbing {
+        height: 9px;
+      }
+      #scrub-fill {
+        height: 100%;
+        background: #7c6ff7;
+        pointer-events: none;
+        transition: width 0.05s linear;
+      }
+      #scrub-bar.scrubbing #scrub-fill {
+        transition: none;
+      }
+      #scrub-thumb {
+        display: none;
+        position: absolute;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 13px;
+        height: 13px;
+        background: #fff;
+        border-radius: 50%;
+        pointer-events: none;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      }
+      #scrub-bar:hover #scrub-thumb,
+      #scrub-bar.scrubbing #scrub-thumb {
+        display: block;
+      }
+      #scrub-tooltip {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%);
+        background: #1e2030;
+        border: 1px solid #2e3140;
+        color: #b3adff;
+        font-family: "SF Mono", "Fira Mono", monospace;
+        font-size: 0.75rem;
+        padding: 3px 7px;
+        border-radius: 5px;
+        white-space: nowrap;
+        pointer-events: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+      #scrub-bar:hover #scrub-tooltip {
+        display: block;
+      }
+
+      /* Right: timestamp panel */
+      #ts-panel {
+        width: 272px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        background: #15161e;
+        border-left: 1px solid #1e1f2a;
+      }
+
+      #ts-header {
+        padding: 18px 18px 10px;
+        border-bottom: 1px solid #1e1f2a;
+      }
+      #ts-header h2 {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      #ts-header .ts-sub {
+        color: #555;
+        font-size: 0.8rem;
+        margin-top: 2px;
+      }
+
+      #stamp-btns {
+        display: flex;
+        gap: 8px;
+        margin: 12px 18px 4px;
+      }
+      .stamp-btn {
+        flex: 1;
+        padding: 9px 0;
+        border: none;
+        border-radius: 9px;
+        color: #fff;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: 0.2px;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .stamp-btn kbd {
+        font-size: 0.68rem;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      #stamp-goal-btn {
+        background: #7c6ff7;
+      }
+      #stamp-goal-btn:hover {
+        background: #6a5edc;
+      }
+      #stamp-goal-btn kbd {
+        background: #5a50c0;
+        border-color: #4a42a8;
+      }
+      #stamp-save-btn {
+        background: #2563a8;
+      }
+      #stamp-save-btn:hover {
+        background: #1d5090;
+      }
+      #stamp-save-btn kbd {
+        background: #1a4580;
+        border-color: #153670;
+      }
+
+      #ts-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px 12px;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #ts-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      #ts-list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #ts-list::-webkit-scrollbar-thumb {
+        background: #2a2b3a;
+        border-radius: 2px;
+      }
+
+      .ts-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        background: #1c1d28;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.12s;
+        border: 1px solid transparent;
+      }
+      .ts-item:hover {
+        background: #222336;
+        border-color: #2e2f42;
+      }
+      .ts-index {
+        color: #444;
+        font-size: 0.75rem;
+        font-weight: 600;
+        width: 18px;
+      }
+      .ts-time {
+        font-family: "SF Mono", "Fira Mono", monospace;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #b3adff;
+        flex: 1;
+        margin-left: 6px;
+      }
+      .ts-del {
+        background: none;
+        border: none;
+        color: #3a3b50;
+        font-size: 0.9rem;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 5px;
+        transition:
+          color 0.12s,
+          background 0.12s;
+        line-height: 1;
+      }
+      .ts-del:hover {
+        color: #e05555;
+        background: rgba(224, 85, 85, 0.12);
+      }
+
+      .ts-tag {
+        font-size: 0.67rem;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 4px;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        flex-shrink: 0;
+      }
+      .ts-tag.goal {
+        background: rgba(124, 111, 247, 0.2);
+        color: #b3adff;
+      }
+      .ts-tag.save {
+        background: rgba(37, 99, 168, 0.25);
+        color: #7ab4f5;
+      }
+
+      #ts-footer {
+        padding: 14px 18px;
+        border-top: 1px solid #1e1f2a;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #generate-btn {
+        padding: 11px 0;
+        background: #3fb950;
+        border: none;
+        border-radius: 9px;
+        color: #000;
+        font-size: 0.9rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #generate-btn:hover:not(:disabled) {
+        background: #34a044;
+      }
+      #generate-btn:disabled {
+        background: #1e3022;
+        color: #3a5a3e;
+        cursor: not-allowed;
+      }
+
+      #gen-progress {
+        display: none;
+        flex-direction: column;
+        gap: 5px;
+      }
+      #gen-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      #gen-label {
+        font-size: 0.77rem;
+        color: #888;
+      }
+      #cancel-btn {
+        background: none;
+        border: 1px solid #3a1a1a;
+        border-radius: 5px;
+        color: #a05050;
+        font-size: 0.72rem;
+        padding: 2px 8px;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+      #cancel-btn:hover {
+        border-color: #7a2020;
+        color: #e06060;
+      }
+
+      #new-video-btn {
+        padding: 8px 0;
+        background: none;
+        border: 1px solid #222330;
+        border-radius: 9px;
+        color: #555;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+      #new-video-btn:hover {
+        border-color: #333;
+        color: #999;
+      }
+
+      /* ── Clip order panel ────────────────────────────────────────── */
+      #order-panel {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+      }
+      #order-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 18px;
+        border-bottom: 1px solid #1e1f2a;
+        flex-shrink: 0;
+      }
+      #order-header-title {
+        flex: 1;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #aaa;
+      }
+      #order-reset-btn {
+        background: none;
+        border: none;
+        color: #555;
+        font-size: 0.78rem;
+        cursor: pointer;
+        text-decoration: underline;
+        padding: 0;
+      }
+      #order-reset-btn:hover {
+        color: #999;
+      }
+      #order-done-btn {
+        background: #3fb950;
+        border: none;
+        border-radius: 6px;
+        padding: 4px 12px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #000;
+        cursor: pointer;
+      }
+      #order-done-btn:hover {
+        background: #34a044;
+      }
+      #order-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 4px 0;
+        list-style: none;
+        margin: 0;
+      }
+      .order-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 18px;
+        cursor: grab;
+        user-select: none;
+        border-bottom: 1px solid #0e0f16;
+        transition: background 0.1s;
+      }
+      .order-item:active {
+        cursor: grabbing;
+      }
+      .order-item:hover {
+        background: #14141e;
+      }
+      .order-item.drag-over-top {
+        border-top: 2px solid #7c6ff7;
+      }
+      .order-item.dragging {
+        opacity: 0.35;
+      }
+      .drag-handle {
+        color: #3a3a50;
+        font-size: 1rem;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+      .order-num {
+        color: #3a3a50;
+        font-size: 0.72rem;
+        width: 16px;
+        text-align: right;
+        flex-shrink: 0;
+      }
+      .order-vid {
+        font-size: 0.7rem;
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: #1a1b26;
+        color: #666;
+        flex-shrink: 0;
+        max-width: 72px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .order-time {
+        color: #d0d0d0;
+        font-size: 0.84rem;
+        font-family: monospace;
+        flex: 1;
+      }
+      #reorder-btn {
+        padding: 8px 0;
+        background: none;
+        border: 1px solid #1e1f2a;
+        border-radius: 9px;
+        color: #5a5a80;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+      #reorder-btn:hover {
+        border-color: #333;
+        color: #9090c0;
+      }
+      #reorder-btn.order-active {
+        border-color: #4a4080;
+        color: #9090c0;
+      }
+      #order-active-bar {
+        display: none;
+        font-size: 0.74rem;
+        color: #7c6ff7;
+        text-align: center;
+        padding: 1px 0;
+      }
+
+      /* ── Clip settings ────────────────────────────────────────── */
+      #clip-settings {
+        padding: 8px 0 2px;
+        border-top: 1px solid #1e1f2a;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .settings-label {
+        font-size: 0.68rem;
+        color: #444;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      .settings-row {
+        display: flex;
+        gap: 6px;
+      }
+      .settings-field {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+      }
+      .settings-field label {
+        font-size: 0.72rem;
+        color: #666;
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .settings-number {
+        flex: 1;
+        min-width: 0;
+        background: #0d0e14;
+        border: 1px solid #1e1f2a;
+        border-radius: 5px;
+        color: #ccc;
+        font-size: 0.82rem;
+        padding: 4px 5px;
+        text-align: center;
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
+      .settings-number::-webkit-inner-spin-button,
+      .settings-number::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+      }
+      .settings-number:focus {
+        outline: none;
+        border-color: #3a3a50;
+      }
+      .settings-unit {
+        font-size: 0.72rem;
+        color: #555;
+        flex-shrink: 0;
+      }
+      #transition-select {
+        width: 100%;
+        background: #0d0e14;
+        border: 1px solid #1e1f2a;
+        border-radius: 5px;
+        color: #ccc;
+        font-size: 0.82rem;
+        padding: 5px 7px;
+        cursor: pointer;
+      }
+      #transition-select:focus {
+        outline: none;
+        border-color: #3a3a50;
+      }
+
+      /* ── Video tabs ──────────────────────────────────────────────── */
+      #video-tabs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 7px 12px;
+        background: #0d0e14;
+        border-bottom: 1px solid #1e1f2a;
+        overflow-x: auto;
+        flex-shrink: 0;
+      }
+      .v-tab {
+        padding: 5px 14px;
+        border: 1px solid #2e3140;
+        border-radius: 6px;
+        background: none;
+        color: #666;
+        font-size: 0.8rem;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s;
+      }
+      .v-tab.active {
+        background: #1e2030;
+        border-color: #7c6ff7;
+        color: #b3adff;
+      }
+      .v-tab.loading {
+        color: #444;
+        font-style: italic;
+        cursor: default;
+      }
+      #add-video-btn {
+        padding: 5px 12px;
+        border: 1px dashed #2e3140;
+        border-radius: 6px;
+        background: none;
+        color: #444;
+        font-size: 0.8rem;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.15s;
+        margin-left: 2px;
+      }
+      #add-video-btn:hover {
+        border-color: #7c6ff7;
+        color: #7c6ff7;
+      }
+
+      /* ── Status overlay (transcoding / generating) ───────────────── */
+      #status-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(10, 11, 15, 0.88);
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        z-index: 200;
+        backdrop-filter: blur(4px);
+      }
+      .spinner {
+        width: 44px;
+        height: 44px;
+        border: 3px solid #222;
+        border-top-color: #7c6ff7;
+        border-radius: 50%;
+        animation: spin 0.75s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      #overlay-msg {
+        font-size: 1.05rem;
+        color: #ccc;
+      }
+      #overlay-sub {
+        font-size: 0.82rem;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ═══════════════ Upload screen ═══════════════ -->
+    <div id="upload-screen">
+      <div class="logo">
+        <h1>🎬 Montage Maker</h1>
+        <p>Upload a game video, mark your clips, download highlights.</p>
+      </div>
+
+      <div
+        id="drop-zone"
+        role="button"
+        tabindex="0"
+        onclick="document.getElementById('file-input').click()"
+        onkeydown="if (event.key === 'Enter') this.click();"
+      >
+        <div class="dz-icon">📹</div>
+        <div class="dz-main">Drop your video here or click to browse</div>
+        <div class="dz-sub">MP4 · MOV · MKV · GoPro footage supported</div>
+      </div>
+      <input type="file" id="file-input" accept="video/*" hidden />
+
+      <label id="skip-transcode-wrap">
+        <input type="checkbox" id="skip-transcode" checked />
+        Skip transcoding
+        <span class="skip-note">(faster · may stutter when seeking)</span>
+      </label>
+
+      <div id="resume-wrap">
+        <button id="resume-btn">↩ Resume Last Session</button>
+        <div id="resume-info"></div>
+      </div>
+
+      <div id="upload-status">
+        <div id="upload-status-label">Uploading…</div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ Player screen ═══════════════ -->
+    <div id="player-screen">
+      <!-- Left column: video -->
+      <div id="video-col">
+        <div id="video-tabs"></div>
+        <input type="file" id="add-video-input" accept="video/*" hidden />
+        <video id="video-player" preload="auto"></video>
+        <div id="scrub-bar">
+          <div id="scrub-fill"></div>
+          <div id="scrub-thumb"></div>
+          <div id="scrub-tooltip"></div>
+        </div>
+
+        <div id="key-hints">
+          <span class="hint"><kbd>←</kbd> Back 5 s</span>
+          <span class="hint"><kbd>→</kbd> Forward 10 s</span>
+          <span class="hint"><kbd>Space</kbd> Play / Pause</span>
+          <span class="hint"><kbd>Hold Space</kbd> 0.25× speed</span>
+          <span class="hint"><kbd>G</kbd> Goal</span>
+          <span class="hint"><kbd>S</kbd> Save</span>
+          <span class="hint"
+            ><kbd>P</kbd> Speed
+            <span id="speed-badge" style="color: #b3adff">1×</span></span
+          >
+          <span id="time-display"></span>
+        </div>
+
+        <div id="download-bar">
+          <a id="download-link" href="#" download="montage.mp4"
+            >⬇ Download Montage</a
+          >
+          <span id="download-note" class="download-note"></span>
+        </div>
+      </div>
+
+      <!-- Right column: timestamp panel -->
+      <div id="ts-panel">
+        <div id="ts-header">
+          <h2>Clip Timestamps</h2>
+          <div class="ts-sub" id="ts-count">0 clips marked</div>
+        </div>
+
+        <div id="stamp-btns">
+          <button id="stamp-goal-btn" class="stamp-btn">
+            ⚽ Goal <kbd>G</kbd>
+          </button>
+          <button id="stamp-save-btn" class="stamp-btn">
+            🧤 Save <kbd>S</kbd>
+          </button>
+        </div>
+
+        <ul id="ts-list"></ul>
+
+        <div id="order-panel">
+          <div id="order-header">
+            <span id="order-header-title">Clip Order</span>
+            <button id="order-reset-btn">Reset</button>
+            <button id="order-done-btn">Done</button>
+          </div>
+          <ul id="order-list"></ul>
+        </div>
+
+        <div id="ts-footer">
+          <button id="generate-btn" disabled>Generate Montage</button>
+          <div id="gen-progress">
+            <div class="progress-track">
+              <div class="progress-fill" id="gen-fill"></div>
+            </div>
+            <div id="gen-footer">
+              <span id="gen-label"></span>
+              <button id="cancel-btn">Cancel</button>
+            </div>
+          </div>
+          <div id="order-active-bar"></div>
+          <div id="clip-settings">
+            <div class="settings-label">Clip Settings</div>
+            <div class="settings-row">
+              <div class="settings-field">
+                <label for="pre-input">Pre-roll</label>
+                <input
+                  type="number"
+                  id="pre-input"
+                  class="settings-number"
+                  value="4.5"
+                  min="0.5"
+                  max="30"
+                  step="0.5"
+                />
+                <span class="settings-unit">s</span>
+              </div>
+              <div class="settings-field">
+                <label for="post-input">Post-roll</label>
+                <input
+                  type="number"
+                  id="post-input"
+                  class="settings-number"
+                  value="2.5"
+                  min="0.5"
+                  max="30"
+                  step="0.5"
+                />
+                <span class="settings-unit">s</span>
+              </div>
+            </div>
+            <select id="transition-select">
+              <option value="0">Hard cut</option>
+              <option value="0.3">Crossfade 0.3s</option>
+              <option value="0.5" selected>Crossfade 0.5s</option>
+              <option value="1.0">Crossfade 1.0s</option>
+              <option value="2.0">Crossfade 2.0s</option>
+            </select>
+          </div>
+          <button id="reorder-btn">⠿ Reorder Clips</button>
+          <button id="new-video-btn">↩ Load different video</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ Status overlay ═══════════════ -->
+    <div id="status-overlay">
+      <div class="spinner"></div>
+      <div id="overlay-msg">Processing…</div>
+      <div id="overlay-sub"></div>
+    </div>
+
+    <script>
+      // ─────────────────────────────────────────────
+      // State
+      // ─────────────────────────────────────────────
+      let videos = []; // [{uploadId, timestamps, previewUrl, name}]
+      let activeIdx = -1;
+      let spaceHeld = false;
+      let spaceTimer = null;
+      const speedSteps = [1.0, 1.5, 2.0, 0.5];
+      let speedIdx = 0;
+      let clipOrder = null; // null = default; [{uploadId, t, type}] = custom order
+      const DEFAULT_SETTINGS = { pre: 4.5, post: 2.5, transition: 0.5 };
+      let settings = { ...DEFAULT_SETTINGS };
+
+      // ─────────────────────────────────────────────
+      // DOM refs
+      // ─────────────────────────────────────────────
+      const uploadScreen = document.getElementById("upload-screen");
+      const playerScreen = document.getElementById("player-screen");
+      const dropZone = document.getElementById("drop-zone");
+      const fileInput = document.getElementById("file-input");
+      const uploadStatus = document.getElementById("upload-status");
+      const uploadLabel = document.getElementById("upload-status-label");
+      const progressFill = document.getElementById("progress-fill");
+      const videoTabsEl = document.getElementById("video-tabs");
+      const addVideoInput = document.getElementById("add-video-input");
+      const video = document.getElementById("video-player");
+      const stampGoalBtn = document.getElementById("stamp-goal-btn");
+      const stampSaveBtn = document.getElementById("stamp-save-btn");
+      const tsList = document.getElementById("ts-list");
+      const tsCount = document.getElementById("ts-count");
+      const generateBtn = document.getElementById("generate-btn");
+      const newVideoBtn = document.getElementById("new-video-btn");
+      const downloadBar = document.getElementById("download-bar");
+      const downloadLink = document.getElementById("download-link");
+      const downloadNote = document.getElementById("download-note");
+      const genProgress = document.getElementById("gen-progress");
+      const genFill = document.getElementById("gen-fill");
+      const genLabel = document.getElementById("gen-label");
+      const cancelBtn = document.getElementById("cancel-btn");
+
+      let activeJobId = null;
+      let activeJobInterval = null;
+
+      cancelBtn.addEventListener("click", () => {
+        if (!activeJobId) return;
+        const jid = activeJobId;
+        clearInterval(activeJobInterval);
+        activeJobInterval = null;
+        activeJobId = null;
+        genProgress.style.display = "none";
+        generateBtn.disabled = false;
+        generateBtn.textContent = "Generate Montage";
+        fetch(`/generate/cancel/${jid}`, { method: "POST" }).catch(() => {});
+      });
+      const overlay = document.getElementById("status-overlay");
+      const overlayMsg = document.getElementById("overlay-msg");
+      const overlaySub = document.getElementById("overlay-sub");
+      const resumeWrap = document.getElementById("resume-wrap");
+      const resumeBtn = document.getElementById("resume-btn");
+      const resumeInfo = document.getElementById("resume-info");
+      const orderPanel = document.getElementById("order-panel");
+      const orderList = document.getElementById("order-list");
+      const reorderBtn = document.getElementById("reorder-btn");
+      const orderActiveBar = document.getElementById("order-active-bar");
+      const orderDoneBtn = document.getElementById("order-done-btn");
+      const orderResetBtn = document.getElementById("order-reset-btn");
+      const preInput = document.getElementById("pre-input");
+      const postInput = document.getElementById("post-input");
+      const transitionSelect = document.getElementById("transition-select");
+
+      // ─────────────────────────────────────────────
+      // Drag & drop
+      // ─────────────────────────────────────────────
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drag-over");
+      });
+      dropZone.addEventListener("dragleave", () =>
+        dropZone.classList.remove("drag-over"),
+      );
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag-over");
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+      });
+      fileInput.addEventListener(
+        "change",
+        () => fileInput.files[0] && handleFile(fileInput.files[0]),
+      );
+      addVideoInput.addEventListener(
+        "change",
+        () => addVideoInput.files[0] && handleFile(addVideoInput.files[0]),
+      );
+
+      // ─────────────────────────────────────────────
+      // Upload
+      // ─────────────────────────────────────────────
+      function handleFile(file) {
+        const isFirstVideo = videos.length === 0;
+        if (isFirstVideo) {
+          uploadStatus.style.display = "flex";
+          uploadLabel.textContent = "Uploading…";
+          progressFill.style.width = "0%";
+        }
+
+        const fd = new FormData();
+        fd.append("video", file);
+        const skipTranscode = document.getElementById("skip-transcode").checked;
+        fd.append("skip_transcode", skipTranscode ? "true" : "false");
+
+        const idx = videos.length;
+        videos.push({
+          uploadId: null,
+          timestamps: [],
+          previewUrl: null,
+          name: file.name,
+          bgStatus: null,
+        });
+        renderTabs();
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/upload");
+
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            if (isFirstVideo) {
+              progressFill.style.width = (pct * 0.65).toFixed(0) + "%";
+              uploadLabel.textContent = `Uploading… ${pct}%`;
+            } else {
+              videos[idx].bgStatus = `↑${pct}%`;
+              renderTabs();
+            }
+          }
+        });
+
+        xhr.addEventListener("load", () => {
+          const data = JSON.parse(xhr.responseText);
+          if (data.error) {
+            alert("Upload failed: " + data.error);
+            videos.splice(idx, 1);
+            renderTabs();
+            overlay.style.display = "none";
+            return;
+          }
+          videos[idx].uploadId = data.upload_id;
+          if (isFirstVideo) {
+            uploadLabel.textContent = skipTranscode
+              ? "Preparing preview…"
+              : "Transcoding to 720p for browser preview…";
+            progressFill.style.width = "90%";
+          } else {
+            videos[idx].bgStatus = skipTranscode ? "loading…" : "transcoding…";
+            renderTabs();
+          }
+          pollUpload(data.upload_id, idx, isFirstVideo, skipTranscode);
+        });
+
+        xhr.addEventListener("error", () => {
+          alert("Upload failed. Is the server running?");
+          videos.splice(idx, 1);
+          renderTabs();
+        });
+        xhr.send(fd);
+      }
+
+      function pollUpload(uid, idx, isFirstVideo, skipTranscode) {
+        let dots = 0;
+        const iv = setInterval(async () => {
+          dots = (dots % 3) + 1;
+          const dotStr = ".".repeat(dots);
+          if (isFirstVideo) {
+            uploadLabel.textContent =
+              (skipTranscode ? "Preparing preview" : "Transcoding to 720p") +
+              dotStr;
+          } else {
+            videos[idx].bgStatus =
+              (skipTranscode ? "loading" : "transcoding") + dotStr;
+            renderTabs();
+          }
+
+          const r = await fetch(`/upload/status/${uid}`);
+          const d = await r.json();
+
+          if (d.status === "ready") {
+            clearInterval(iv);
+            videos[idx].previewUrl = d.preview_url;
+            videos[idx].bgStatus = null;
+            renderTabs();
+            saveSession();
+            if (isFirstVideo) {
+              progressFill.style.width = "100%";
+              uploadLabel.textContent = "Ready!";
+              setTimeout(() => loadPlayer(d.preview_url, idx), 350);
+            }
+          } else if (d.status === "error") {
+            clearInterval(iv);
+            if (isFirstVideo) {
+              uploadLabel.textContent = "✗ Error: " + d.error;
+              progressFill.style.background = "#e05555";
+            } else {
+              alert("Transcode failed: " + d.error);
+              videos.splice(idx, 1);
+              renderTabs();
+            }
+          }
+        }, 1400);
+      }
+
+      function loadPlayer(previewUrl, idx) {
+        activeIdx = idx;
+        uploadScreen.style.display = "none";
+        playerScreen.style.display = "flex";
+        downloadBar.style.display = "none";
+        video.src = previewUrl;
+        video.play().catch(() => {});
+        renderTabs();
+        renderTimestamps();
+      }
+
+      // ─────────────────────────────────────────────
+      // Tab bar
+      // ─────────────────────────────────────────────
+      function renderTabs() {
+        videoTabsEl.innerHTML = "";
+        videos.forEach((v, i) => {
+          const btn = document.createElement("button");
+          btn.className =
+            "v-tab" +
+            (i === activeIdx ? " active" : "") +
+            (v.previewUrl ? "" : " loading");
+          const shortName = v.name.replace(/\.[^.]+$/, "").slice(0, 24);
+          if (!v.previewUrl && v.bgStatus) {
+            btn.textContent = shortName + " · " + v.bgStatus;
+          } else {
+            btn.textContent = v.previewUrl ? shortName : shortName + " ⋯";
+          }
+          btn.title = v.name;
+          btn.addEventListener("click", () => {
+            if (v.previewUrl) switchTab(i);
+          });
+          videoTabsEl.appendChild(btn);
+        });
+        if (playerScreen.style.display !== "none") {
+          const addBtn = document.createElement("button");
+          addBtn.id = "add-video-btn";
+          addBtn.textContent = "+ Add Video";
+          addBtn.addEventListener("click", () => addVideoInput.click());
+          videoTabsEl.appendChild(addBtn);
+        }
+      }
+
+      function switchTab(idx) {
+        if (idx === activeIdx) return;
+        activeIdx = idx;
+        const v = videos[idx];
+        if (v && v.previewUrl) {
+          video.src = v.previewUrl;
+          video.playbackRate = speedSteps[speedIdx];
+          video.play().catch(() => {});
+        }
+        downloadBar.style.display = "none";
+        renderTabs();
+        renderTimestamps();
+      }
+
+      // ─────────────────────────────────────────────
+      // Keyboard shortcuts
+      // ─────────────────────────────────────────────
+      document.addEventListener("keydown", (e) => {
+        if (activeIdx < 0) return;
+        if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")
+          return;
+
+        switch (e.code) {
+          case "ArrowRight":
+            e.preventDefault();
+            video.currentTime = Math.min(
+              video.duration || Infinity,
+              video.currentTime + 10,
+            );
+            break;
+
+          case "ArrowLeft":
+            e.preventDefault();
+            video.currentTime = Math.max(0, video.currentTime - 5);
+            break;
+
+          case "Space":
+            e.preventDefault();
+            if (!e.repeat) {
+              // Distinguish tap (play/pause) vs hold (slow motion)
+              spaceTimer = setTimeout(() => {
+                spaceHeld = true;
+                video.playbackRate = 0.25;
+                if (video.paused) video.play().catch(() => {});
+              }, 300);
+            }
+            break;
+
+          case "KeyG":
+            e.preventDefault();
+            stampClip("goal");
+            break;
+
+          case "KeyS":
+            e.preventDefault();
+            stampClip("save");
+            break;
+
+          case "KeyP":
+            e.preventDefault();
+            speedIdx = (speedIdx + 1) % speedSteps.length;
+            video.playbackRate = speedSteps[speedIdx];
+            document.getElementById("speed-badge").textContent =
+              speedSteps[speedIdx] + "×";
+            break;
+        }
+      });
+
+      document.addEventListener("keyup", (e) => {
+        if (e.code !== "Space") return;
+        clearTimeout(spaceTimer);
+        if (spaceHeld) {
+          // Release from slow-motion → resume normal speed
+          spaceHeld = false;
+          video.playbackRate = speedSteps[speedIdx];
+        } else {
+          // Short tap → toggle play / pause
+          if (video.paused) video.play().catch(() => {});
+          else video.pause();
+        }
+      });
+
+      // ─────────────────────────────────────────────
+      // Time display
+      // ─────────────────────────────────────────────
+      const timeDisplay = document.getElementById("time-display");
+      function updateTimeDisplay() {
+        const cur = isNaN(video.currentTime) ? 0 : video.currentTime;
+        const dur = isNaN(video.duration) ? 0 : video.duration;
+        timeDisplay.textContent =
+          dur > 0 ? `${fmtDisplay(cur)} / ${fmtDisplay(dur)}` : "";
+      }
+      video.addEventListener("timeupdate", updateTimeDisplay);
+      video.addEventListener("loadedmetadata", updateTimeDisplay);
+
+      // ─────────────────────────────────────────────
+      // Scrub bar
+      // ─────────────────────────────────────────────
+      const scrubBar = document.getElementById("scrub-bar");
+      const scrubFill = document.getElementById("scrub-fill");
+      const scrubThumb = document.getElementById("scrub-thumb");
+      const scrubTooltip = document.getElementById("scrub-tooltip");
+      let scrubbing = false;
+      let wasPausedBeforeScrub = false;
+
+      function seekFromEvent(e) {
+        const rect = scrubBar.getBoundingClientRect();
+        const pct = Math.max(
+          0,
+          Math.min(1, (e.clientX - rect.left) / rect.width),
+        );
+        if (!isNaN(video.duration) && video.duration > 0) {
+          video.currentTime = pct * video.duration;
+        }
+      }
+
+      scrubBar.addEventListener("mousemove", (e) => {
+        if (isNaN(video.duration) || video.duration === 0) return;
+        const rect = scrubBar.getBoundingClientRect();
+        const pct = Math.max(
+          0,
+          Math.min(1, (e.clientX - rect.left) / rect.width),
+        );
+        scrubTooltip.textContent = fmtDisplay(pct * video.duration);
+        scrubTooltip.style.left = pct * 100 + "%";
+      });
+
+      function updateScrubBar() {
+        if (isNaN(video.duration) || video.duration === 0) return;
+        const pct = (video.currentTime / video.duration) * 100;
+        scrubFill.style.width = pct + "%";
+        scrubThumb.style.left = pct + "%";
+      }
+
+      scrubBar.addEventListener("mousedown", (e) => {
+        scrubbing = true;
+        wasPausedBeforeScrub = video.paused;
+        scrubBar.classList.add("scrubbing");
+        seekFromEvent(e);
+        video.pause();
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!scrubbing) return;
+        seekFromEvent(e);
+      });
+
+      document.addEventListener("mouseup", (e) => {
+        if (!scrubbing) return;
+        scrubbing = false;
+        scrubBar.classList.remove("scrubbing");
+        seekFromEvent(e);
+        if (!wasPausedBeforeScrub) video.play().catch(() => {});
+      });
+
+      video.addEventListener("timeupdate", updateScrubBar);
+      video.addEventListener("loadedmetadata", updateScrubBar);
+      video.addEventListener("click", () => {
+        if (video.paused) video.play().catch(() => {});
+        else video.pause();
+      });
+
+      // ─────────────────────────────────────────────
+      // Stamping
+      // ─────────────────────────────────────────────
+      stampGoalBtn.addEventListener("click", () => stampClip("goal"));
+      stampSaveBtn.addEventListener("click", () => stampClip("save"));
+
+      function stampClip(type) {
+        if (activeIdx < 0 || isNaN(video.currentTime)) return;
+        video.pause();
+        const t = video.currentTime;
+        videos[activeIdx].timestamps.push({ t, type });
+        videos[activeIdx].timestamps.sort((a, b) => a.t - b.t);
+        renderTimestamps();
+        saveSession();
+        // Fire-and-forget background pre-extraction so Generate is faster
+        const uid = videos[activeIdx].uploadId;
+        if (uid) {
+          fetch("/preclip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ upload_id: uid, timestamp: t }),
+          }).catch(() => {});
+        }
+      }
+
+      function removeStamp(i, e) {
+        e.stopPropagation();
+        if (clipOrder !== null) {
+          const uid = videos[activeIdx].uploadId;
+          const clip = videos[activeIdx].timestamps[i];
+          const oi = clipOrder.findIndex(
+            (c) => c.uploadId === uid && c.t === clip.t && c.type === clip.type,
+          );
+          if (oi !== -1) clipOrder.splice(oi, 1);
+          if (clipOrder.length === 0) clipOrder = null;
+          updateOrderActiveBar();
+        }
+        videos[activeIdx].timestamps.splice(i, 1);
+        renderTimestamps();
+        saveSession();
+      }
+
+      function seekTo(t) {
+        video.currentTime = t;
+        // Brief pause to let user see the frame before resuming
+        video.pause();
+      }
+
+      function renderTimestamps() {
+        tsList.innerHTML = "";
+        const ts = activeIdx >= 0 ? videos[activeIdx].timestamps : [];
+        ts.forEach((entry, i) => {
+          const li = document.createElement("li");
+          li.className = "ts-item";
+          li.title = "Click to seek";
+          li.innerHTML = `
+      <span class="ts-index">${i + 1}</span>
+      <span class="ts-time">${fmtDisplay(entry.t)}</span>
+      <span class="ts-tag ${entry.type}">${entry.type}</span>
+      <button class="ts-del" title="Remove">✕</button>`;
+          li.querySelector(".ts-del").addEventListener("click", (e) =>
+            removeStamp(i, e),
+          );
+          li.addEventListener("click", () => seekTo(entry.t));
+          tsList.appendChild(li);
+        });
+
+        const n = ts.length;
+        const totalGoals = videos.reduce(
+          (sum, v) => sum + v.timestamps.length,
+          0,
+        );
+        tsCount.textContent =
+          videos.length > 1
+            ? `${n} clip${n !== 1 ? "s" : ""} here · ${totalGoals} total`
+            : `${n} clip${n !== 1 ? "s" : ""} marked`;
+        generateBtn.disabled = totalGoals === 0;
+      }
+
+      // Display format: M:SS or H:MM:SS
+      function fmtDisplay(secs) {
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = Math.floor(secs % 60);
+        if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+        return `${m}:${pad(s)}`;
+      }
+      function pad(n) {
+        return String(n).padStart(2, "0");
+      }
+
+      // ─────────────────────────────────────────────
+      // Clip ordering
+      // ─────────────────────────────────────────────
+      function getDefaultOrder() {
+        const order = [];
+        for (const v of videos) {
+          for (const ts of v.timestamps) {
+            order.push({ uploadId: v.uploadId, t: ts.t, type: ts.type });
+          }
+        }
+        return order;
+      }
+
+      function updateOrderActiveBar() {
+        if (clipOrder !== null) {
+          const n = clipOrder.length;
+          orderActiveBar.style.display = "block";
+          orderActiveBar.textContent = `Custom order · ${n} clip${n !== 1 ? "s" : ""}`;
+          reorderBtn.classList.add("order-active");
+          reorderBtn.textContent = "⠿ Edit Order";
+        } else {
+          orderActiveBar.style.display = "none";
+          reorderBtn.classList.remove("order-active");
+          reorderBtn.textContent = "⠿ Reorder Clips";
+        }
+      }
+
+      function openOrderPanel() {
+        if (clipOrder === null) clipOrder = getDefaultOrder();
+        renderOrderPanel();
+        tsList.style.display = "none";
+        document.getElementById("stamp-btns").style.display = "none";
+        orderPanel.style.display = "flex";
+        reorderBtn.style.display = "none";
+        orderActiveBar.style.display = "none";
+      }
+
+      function closeOrderPanel() {
+        orderPanel.style.display = "";
+        tsList.style.display = "";
+        document.getElementById("stamp-btns").style.display = "";
+        reorderBtn.style.display = "";
+        updateOrderActiveBar();
+      }
+
+      let _dragSrcIdx = -1;
+      function renderOrderPanel() {
+        const order = clipOrder !== null ? clipOrder : getDefaultOrder();
+        orderList.innerHTML = "";
+        order.forEach((clip, i) => {
+          const vid = videos.find((v) => v.uploadId === clip.uploadId);
+          const vidName = vid
+            ? vid.name.replace(/\.[^.]+$/, "")
+            : clip.uploadId.slice(0, 8);
+          const li = document.createElement("li");
+          li.className = "order-item";
+          li.draggable = true;
+          li.dataset.idx = i;
+          li.innerHTML = `
+            <span class="drag-handle">⠿</span>
+            <span class="order-num">${i + 1}</span>
+            <span class="order-vid" title="${vidName}">${vidName}</span>
+            <span class="order-time">${fmtDisplay(clip.t)}</span>
+            <span class="ts-tag ${clip.type}">${clip.type}</span>`;
+          li.addEventListener("dragstart", (e) => {
+            _dragSrcIdx = i;
+            e.dataTransfer.effectAllowed = "move";
+            setTimeout(() => li.classList.add("dragging"), 0);
+          });
+          li.addEventListener("dragend", () => {
+            li.classList.remove("dragging");
+            orderList
+              .querySelectorAll(".order-item")
+              .forEach((el) => el.classList.remove("drag-over-top"));
+          });
+          li.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            orderList
+              .querySelectorAll(".order-item")
+              .forEach((el) => el.classList.remove("drag-over-top"));
+            if (_dragSrcIdx !== i) li.classList.add("drag-over-top");
+          });
+          li.addEventListener("dragleave", () =>
+            li.classList.remove("drag-over-top"),
+          );
+          li.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const targetIdx = parseInt(li.dataset.idx);
+            if (_dragSrcIdx === targetIdx) return;
+            const cur = clipOrder !== null ? [...clipOrder] : getDefaultOrder();
+            const [moved] = cur.splice(_dragSrcIdx, 1);
+            cur.splice(targetIdx, 0, moved);
+            clipOrder = cur;
+            saveSession();
+            renderOrderPanel();
+          });
+          orderList.appendChild(li);
+        });
+      }
+
+      reorderBtn.addEventListener("click", openOrderPanel);
+      orderDoneBtn.addEventListener("click", closeOrderPanel);
+      orderResetBtn.addEventListener("click", () => {
+        clipOrder = null;
+        saveSession();
+        closeOrderPanel();
+      });
+
+      // ─────────────────────────────────────────────
+      // Clip settings
+      // ─────────────────────────────────────────────
+      function applySettingsToInputs() {
+        preInput.value = settings.pre;
+        postInput.value = settings.post;
+        transitionSelect.value = String(settings.transition);
+        if (!transitionSelect.value) transitionSelect.value = "0.5";
+      }
+
+      function retriggerPreclips() {
+        for (const v of videos) {
+          if (!v.uploadId) continue;
+          for (const ts of v.timestamps) {
+            fetch("/preclip", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                upload_id: v.uploadId,
+                timestamp: ts.t,
+                pre: settings.pre,
+                post: settings.post,
+              }),
+            }).catch(() => {});
+          }
+        }
+      }
+
+      preInput.addEventListener("change", () => {
+        const v = parseFloat(preInput.value);
+        if (!isNaN(v) && v >= 0.5 && v <= 30) {
+          settings.pre = v;
+          saveSession();
+          retriggerPreclips();
+        } else {
+          preInput.value = settings.pre;
+        }
+      });
+      postInput.addEventListener("change", () => {
+        const v = parseFloat(postInput.value);
+        if (!isNaN(v) && v >= 0.5 && v <= 30) {
+          settings.post = v;
+          saveSession();
+          retriggerPreclips();
+        } else {
+          postInput.value = settings.post;
+        }
+      });
+      transitionSelect.addEventListener("change", () => {
+        settings.transition = parseFloat(transitionSelect.value);
+        saveSession();
+      });
+
+      // ─────────────────────────────────────────────
+      // Generate montage
+      // ─────────────────────────────────────────────
+      generateBtn.addEventListener("click", async () => {
+        const effectiveOrder =
+          clipOrder !== null ? clipOrder : getDefaultOrder();
+        if (effectiveOrder.length === 0) return;
+
+        generateBtn.disabled = true;
+        generateBtn.textContent = "Generating…";
+        genFill.style.width = "0%";
+        genLabel.textContent = "Starting…";
+        genProgress.style.display = "flex";
+        downloadBar.style.display = "none";
+
+        const payload = {
+          clips: effectiveOrder.map((c) => ({
+            upload_id: c.uploadId,
+            timestamp: c.t,
+          })),
+          pre: settings.pre,
+          post: settings.post,
+          transition: settings.transition,
+        };
+        const res = await fetch("/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const { job_id, error } = await res.json();
+        if (error) {
+          genProgress.style.display = "none";
+          generateBtn.disabled = false;
+          generateBtn.textContent = "Generate Montage";
+          alert("Error: " + error);
+          return;
+        }
+        pollJob(job_id, effectiveOrder.length);
+      });
+
+      function pollJob(jobId, totalClips) {
+        activeJobId = jobId;
+        const iv = setInterval(async () => {
+          const r = await fetch(`/generate/status/${jobId}`);
+          const d = await r.json();
+          genLabel.textContent = d.progress || "Working…";
+          genFill.style.width = (d.pct ?? 0) + "%";
+
+          if (d.status === "done") {
+            clearInterval(iv);
+            activeJobInterval = null;
+            activeJobId = null;
+            genProgress.style.display = "none";
+            generateBtn.disabled = false;
+            generateBtn.textContent = "Generate Montage";
+            downloadLink.href = d.download_url;
+            downloadNote.textContent = `Full resolution · ${totalClips} clip${totalClips !== 1 ? "s" : ""}`;
+            downloadBar.style.display = "flex";
+          } else if (d.status === "error") {
+            clearInterval(iv);
+            activeJobInterval = null;
+            activeJobId = null;
+            genProgress.style.display = "none";
+            generateBtn.disabled = false;
+            generateBtn.textContent = "Generate Montage";
+            alert("Montage failed: " + (d.error || "unknown error"));
+          } else if (d.status === "cancelled") {
+            clearInterval(iv);
+            activeJobInterval = null;
+            activeJobId = null;
+            genProgress.style.display = "none";
+            generateBtn.disabled = false;
+            generateBtn.textContent = "Generate Montage";
+          }
+        }, 1500);
+        activeJobInterval = iv;
+      }
+
+      // ─────────────────────────────────────────────
+      // Session persistence
+      // ─────────────────────────────────────────────
+      let _saveTimer = null;
+      function saveSession() {
+        clearTimeout(_saveTimer);
+        _saveTimer = setTimeout(() => {
+          fetch("/session/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              videos: videos.map((v) => ({
+                uploadId: v.uploadId || "",
+                name: v.name,
+                timestamps: v.timestamps,
+              })),
+              clipOrder: clipOrder,
+              settings: settings,
+            }),
+          }).catch(() => {});
+        }, 400);
+      }
+
+      async function checkForSession() {
+        try {
+          const r = await fetch("/session/load");
+          const data = await r.json();
+          const available = data.videos.filter((v) => v.available);
+          if (available.length === 0) {
+            resumeWrap.style.display = "none";
+            return;
+          }
+          const totalGoals = available.reduce(
+            (s, v) => s + (v.timestamps || []).length,
+            0,
+          );
+          const segments =
+            available.length === 1 ? "1 video" : `${available.length} videos`;
+          const goals = totalGoals === 1 ? "1 clip" : `${totalGoals} clips`;
+          resumeInfo.textContent = `${segments} · ${goals} stamped`;
+          resumeWrap.style.display = "flex";
+          resumeBtn.onclick = () =>
+            resumeSession(available, data.clipOrder || null);
+        } catch (e) {}
+      }
+
+      function resumeSession(savedVideos, savedClipOrder, savedSettings) {
+        resumeWrap.style.display = "none";
+        for (const sv of savedVideos) {
+          // Normalize old sessions that stored plain floats
+          const timestamps = (sv.timestamps || []).map((e) =>
+            typeof e === "number" ? { t: e, type: "goal" } : e,
+          );
+          videos.push({
+            uploadId: sv.uploadId,
+            timestamps,
+            previewUrl: `/preview/${sv.uploadId}`,
+            name: sv.name || "Video",
+            bgStatus: null,
+          });
+        }
+        if (savedClipOrder) {
+          clipOrder = savedClipOrder;
+          updateOrderActiveBar();
+        }
+        if (savedSettings) {
+          settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+          applySettingsToInputs();
+        }
+        loadPlayer(`/preview/${savedVideos[0].uploadId}`, 0);
+      }
+
+      // ─────────────────────────────────────────────
+      // Reset
+      // ─────────────────────────────────────────────
+      newVideoBtn.addEventListener("click", () => {
+        const msg =
+          videos.length > 1
+            ? `Start over? All ${videos.length} videos and their timestamps will be cleared.`
+            : "Load a new video? Unsaved timestamps will be lost.";
+        if (!confirm(msg)) return;
+        fetch("/session/clear", { method: "POST" }).catch(() => {});
+        videos = [];
+        activeIdx = -1;
+        video.pause();
+        video.src = "";
+        playerScreen.style.display = "none";
+        uploadStatus.style.display = "none";
+        progressFill.style.width = "0%";
+        progressFill.style.background = "#7c6ff7";
+        fileInput.value = "";
+        addVideoInput.value = "";
+        videoTabsEl.innerHTML = "";
+        downloadBar.style.display = "none";
+        renderTimestamps();
+        uploadScreen.style.display = "flex";
+        resumeWrap.style.display = "none";
+      });
+
+      checkForSession();
+    </script>
+  </body>
+</html>
