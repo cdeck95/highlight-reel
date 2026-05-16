@@ -72,14 +72,14 @@ brew install python
 
 ### 4. Download this project
 
-Unzip the file you received and note where the folder is (e.g. `~/Downloads/goal-timestamp-detector`).
+Unzip the file you received and note where the folder is (e.g. `~/Downloads/highlight-reel`).
 
 ### 5. Install Python dependencies
 
 In Terminal, navigate to the project folder:
 
 ```
-cd ~/Downloads/goal-timestamp-detector
+cd ~/Downloads/highlight-reel
 ```
 
 Then install the dependencies:
@@ -122,14 +122,14 @@ ffmpeg -version
 
 ### 4. Download this project
 
-Unzip the file you received and note where the folder is (e.g. `C:\Users\YourName\Downloads\goal-timestamp-detector`).
+Unzip the file you received and note where the folder is (e.g. `C:\Users\YourName\Downloads\highlight-reel`).
 
 ### 5. Install Python dependencies
 
 In PowerShell, navigate to the project folder:
 
 ```
-cd C:\Users\YourName\Downloads\goal-timestamp-detector
+cd C:\Users\YourName\Downloads\highlight-reel
 ```
 
 Then install the dependencies:
@@ -147,7 +147,7 @@ Every time you want to use the tool:
 1. Open Terminal
 2. Navigate to the project folder:
    ```
-   cd ~/Downloads/goal-timestamp-detector
+   cd ~/Downloads/highlight-reel
    ```
 3. Start the server:
    ```
@@ -166,7 +166,7 @@ Every time you want to use the tool:
 1. Open PowerShell (`Win + X` → Terminal or PowerShell)
 2. Navigate to the project folder:
    ```
-   cd C:\Users\YourName\Downloads\goal-timestamp-detector
+   cd C:\Users\YourName\Downloads\highlight-reel
    ```
 3. Start the server:
    ```
