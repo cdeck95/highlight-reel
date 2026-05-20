@@ -158,8 +158,12 @@ def extract_clip(src: str, start: float, duration: float, out: str) -> None:
         "-ss", f"{start:.3f}",        # seek before opening (fast)
         "-i", src,
         "-t", f"{duration:.3f}",
+        "-vf", "scale=-2:min(ih\\,1080),format=yuv420p",  # 1080p max + force limited-range
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-        "-c:a", "aac", "-ar", "44100",
+        "-maxrate", "5M", "-bufsize", "10M",
+        "-color_range", "tv", "-colorspace", "bt709",
+        "-color_trc", "bt709", "-color_primaries", "bt709",
+        "-c:a", "aac", "-ar", "44100", "-ac", "2",
         "-avoid_negative_ts", "make_zero",
         "-movflags", "+faststart",
         out,
@@ -187,6 +191,7 @@ def build_montage_hard_cut(clips: list, output: str) -> None:
             "-filter_complex", filter_complex,
             "-map", "[vout]", "-map", "[aout]",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-ar", "44100",
             "-movflags", "+faststart",
             output,
@@ -242,6 +247,7 @@ def build_montage_xfade(clips: list, output: str, transition: float) -> None:
             "-filter_complex", filter_complex,
             "-map", "[vout]", "-map", "[aout]",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             output,
         ]

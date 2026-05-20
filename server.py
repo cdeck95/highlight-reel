@@ -110,6 +110,7 @@ def _transcode(uid: str, orig_path: Path) -> None:
             "ffmpeg", "-y", "-i", str(orig_path),
             "-vf", "scale=-2:720",
             "-c:v", "libx264", "-preset", "fast", "-crf", "26",
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-ar", "44100", "-b:a", "128k",
             "-movflags", "+faststart",
             str(preview_path),
