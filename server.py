@@ -94,11 +94,49 @@ def upload():
             "preview_url": f"/preview/{uid}",
             "duration": duration,
             "use_orig": True,
+            "source_status": "transcoding",
         }
     else:
-        _uploads[uid] = {"status": "transcoding"}
+        _uploads[uid] = {"status": "transcoding", "source_status": "transcoding"}
         threading.Thread(target=_transcode, args=(uid, orig_path), daemon=True).start()
+    # Always kick off 1080p source transcode in the background so clip extraction
+    # reads a small file instead of decoding raw 4K footage per-clip.
+    threading.Thread(target=_source_transcode, args=(uid, orig_path), daemon=True).start()
     return jsonify({"upload_id": uid})
+
+
+def _source_transcode(uid: str, orig_path: Path) -> None:
+    """Re-encode to 1080p Instagram-ready H.264 used as the clip-extraction source.
+
+    Always runs in the background after upload so preclip/generate work from a
+    small, already-downscaled file rather than decoding raw 4K GoPro footage.
+    """
+    import subprocess
+    source_path = UPLOAD_DIR / f"source_{uid}.mp4"
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(orig_path),
+            "-vf", "scale=-2:min(ih\\,1080),format=yuv420p",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+            "-maxrate", "5M", "-bufsize", "10M",
+            "-color_range", "tv", "-colorspace", "bt709",
+            "-color_trc", "bt709", "-color_primaries", "bt709",
+            "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-ac", "2",
+            "-movflags", "+faststart",
+            str(source_path),
+        ], check=True, capture_output=True)
+        _uploads[uid]["source_status"] = "ready"
+    except Exception as e:
+        _uploads[uid]["source_status"] = "error"
+
+
+def _get_source_path(uid: str) -> Path:
+    """Return the 1080p source file if ready, otherwise fall back to the original."""
+    if _uploads.get(uid, {}).get("source_status") == "ready":
+        p = UPLOAD_DIR / f"source_{uid}.mp4"
+        if p.exists():
+            return p
+    return UPLOAD_DIR / f"orig_{uid}.mp4"
 
 
 def _transcode(uid: str, orig_path: Path) -> None:
@@ -130,7 +168,7 @@ def _transcode(uid: str, orig_path: Path) -> None:
 def session_clear():
     """Delete all uploaded/output files and reset in-memory state."""
     for uid in list(_uploads):
-        for pat in (f"orig_{uid}.mp4", f"preview_{uid}.mp4"):
+        for pat in (f"orig_{uid}.mp4", f"preview_{uid}.mp4", f"source_{uid}.mp4"):
             (UPLOAD_DIR / pat).unlink(missing_ok=True)
     _uploads.clear()
     for f in OUTPUT_DIR.iterdir():
@@ -210,6 +248,7 @@ def session_load():
         if uid not in _uploads:
             orig = UPLOAD_DIR / f"orig_{uid}.mp4"
             preview = UPLOAD_DIR / f"preview_{uid}.mp4"
+            source = UPLOAD_DIR / f"source_{uid}.mp4"
             use_orig = (not preview.exists()) and orig.exists()
             src = orig if use_orig else preview
             if src.exists():
@@ -220,6 +259,7 @@ def session_load():
                 entry = {"status": "ready", "preview_url": f"/preview/{uid}", "duration": duration}
                 if use_orig:
                     entry["use_orig"] = True
+                entry["source_status"] = "ready" if source.exists() else "pending"
                 _uploads[uid] = entry
         available = _uploads.get(uid, {}).get("status") == "ready"
         result.append({**v, "available": available})
@@ -262,8 +302,8 @@ def preclip():
         return jsonify({"error": "invalid params"}), 400
     if _uploads.get(uid, {}).get("status") != "ready":
         return jsonify({"skipped": True})  # upload not ready yet
-    orig_path = UPLOAD_DIR / f"orig_{uid}.mp4"
-    if not orig_path.exists():
+    source_path = _get_source_path(uid)
+    if not source_path.exists():
         return jsonify({"error": "source not found"}), 404
 
     pre  = max(0.5, min(float(data.get("pre",  4.5)), 30.0))
@@ -287,7 +327,7 @@ def preclip():
     _preclips[key] = {"status": "extracting"}
     threading.Thread(
         target=_do_preclip,
-        args=(key, str(orig_path), start, duration, str(out_path), pre, post),
+        args=(key, str(source_path), start, duration, str(out_path), pre, post),
         daemon=True,
     ).start()
     return jsonify({"key": key})
@@ -325,10 +365,10 @@ def generate():
             return jsonify({"error": "invalid timestamp"}), 400
         if _uploads.get(uid, {}).get("status") != "ready":
             return jsonify({"error": f"upload {uid} not ready"}), 400
-        orig_path = UPLOAD_DIR / f"orig_{uid}.mp4"
-        if not orig_path.exists():
-            return jsonify({"error": f"original video not found for {uid}"}), 404
-        sources.append((uid, str(orig_path), [float(ts)]))
+        source_path = _get_source_path(uid)
+        if not source_path.exists():
+            return jsonify({"error": f"video not found for {uid}"}), 404
+        sources.append((uid, str(source_path), [float(ts)]))
 
     pre        = max(0.5, min(float(data.get("pre",        4.5)), 30.0))
     post       = max(0.5, min(float(data.get("post",       2.5)), 30.0))
