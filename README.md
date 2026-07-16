@@ -199,8 +199,8 @@ Once the video loads, use keyboard shortcuts to navigate and stamp clips:
 | `→`          | Forward 10 seconds                           |
 | `G`          | Stamp a **goal** clip at current time        |
 | `S`          | Stamp a **save** clip at current time        |
-| `P`          | Cycle playback speed (1× → 1.5× → 2× → 0.5×) |
-| Hold `Space` | Slow motion (0.25×) while held               |
+| `P`          | Cycle playback speed (1× → 1.25× → 1.5× → 2× → 0.5×) |
+| Hold `Space` | Fast forward (2×) while held                        |
 
 Click any timestamp in the list to jump to it, or click the `×` next to a timestamp to remove it.
 

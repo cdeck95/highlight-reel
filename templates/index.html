@@ -394,12 +394,22 @@
         background: #1c1d28;
         border-radius: 8px;
         cursor: pointer;
-        transition: background 0.12s;
+        transition:
+          background 0.12s,
+          border-color 0.12s;
         border: 1px solid transparent;
       }
       .ts-item:hover {
         background: #222336;
         border-color: #2e2f42;
+      }
+      .ts-item.active {
+        background: rgba(124, 111, 247, 0.18);
+        border-color: #7c6ff7;
+      }
+      .ts-item.active:hover {
+        background: rgba(124, 111, 247, 0.25);
+        border-color: #9285ff;
       }
       .ts-index {
         color: #444;
@@ -590,13 +600,22 @@
         cursor: grab;
         user-select: none;
         border-bottom: 1px solid #0e0f16;
-        transition: background 0.1s;
+        transition:
+          background 0.1s,
+          border-color 0.1s;
       }
       .order-item:active {
         cursor: grabbing;
       }
       .order-item:hover {
         background: #14141e;
+      }
+      .order-item.active {
+        background: rgba(124, 111, 247, 0.18);
+        border-bottom-color: #7c6ff7;
+      }
+      .order-item.active:hover {
+        background: rgba(124, 111, 247, 0.25);
       }
       .order-item.drag-over-top {
         border-top: 2px solid #7c6ff7;
@@ -878,7 +897,7 @@
           <span class="hint"><kbd>←</kbd> Back 5 s</span>
           <span class="hint"><kbd>→</kbd> Forward 10 s</span>
           <span class="hint"><kbd>Space</kbd> Play / Pause</span>
-          <span class="hint"><kbd>Hold Space</kbd> 0.25× speed</span>
+          <span class="hint"><kbd>Hold Space</kbd> 2× speed</span>
           <span class="hint"><kbd>G</kbd> Goal</span>
           <span class="hint"><kbd>S</kbd> Save</span>
           <span class="hint"
@@ -994,7 +1013,7 @@
       let activeIdx = -1;
       let spaceHeld = false;
       let spaceTimer = null;
-      const speedSteps = [1.0, 1.5, 2.0, 0.5];
+      const speedSteps = [1.0, 1.25, 1.5, 2.0, 0.5];
       let speedIdx = 0;
       let clipOrder = null; // null = default; [{uploadId, t, type}] = custom order
       const DEFAULT_SETTINGS = { pre: 4.5, post: 2.5, transition: 0.5 };
@@ -1279,10 +1298,10 @@
           case "Space":
             e.preventDefault();
             if (!e.repeat) {
-              // Distinguish tap (play/pause) vs hold (slow motion)
+              // Distinguish tap (play/pause) vs hold (fast forward)
               spaceTimer = setTimeout(() => {
                 spaceHeld = true;
-                video.playbackRate = 0.25;
+                video.playbackRate = 2.0;
                 if (video.paused) video.play().catch(() => {});
               }, 300);
             }
@@ -1333,7 +1352,9 @@
           dur > 0 ? `${fmtDisplay(cur)} / ${fmtDisplay(dur)}` : "";
       }
       video.addEventListener("timeupdate", updateTimeDisplay);
+      video.addEventListener("timeupdate", updateHighlightedTimestamp);
       video.addEventListener("loadedmetadata", updateTimeDisplay);
+      video.addEventListener("loadedmetadata", updateHighlightedTimestamp);
 
       // ─────────────────────────────────────────────
       // Scrub bar
@@ -1414,7 +1435,7 @@
         const t = video.currentTime;
         videos[activeIdx].timestamps.push({ t, type });
         videos[activeIdx].timestamps.sort((a, b) => a.t - b.t);
-        renderTimestamps();
+        renderTimestamps(t);
         saveSession();
         // Fire-and-forget background pre-extraction so Generate is faster
         const uid = videos[activeIdx].uploadId;
@@ -1422,7 +1443,12 @@
           fetch("/preclip", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ upload_id: uid, timestamp: t }),
+            body: JSON.stringify({
+              upload_id: uid,
+              timestamp: t,
+              pre: settings.pre,
+              post: settings.post,
+            }),
           }).catch(() => {});
         }
       }
@@ -1450,9 +1476,10 @@
         video.pause();
       }
 
-      function renderTimestamps() {
+      function renderTimestamps(scrollToTime) {
         tsList.innerHTML = "";
         const ts = activeIdx >= 0 ? videos[activeIdx].timestamps : [];
+        let scrollToEl = null;
         ts.forEach((entry, i) => {
           const li = document.createElement("li");
           li.className = "ts-item";
@@ -1467,6 +1494,10 @@
           );
           li.addEventListener("click", () => seekTo(entry.t));
           tsList.appendChild(li);
+
+          if (scrollToTime !== undefined && entry.t === scrollToTime) {
+            scrollToEl = li;
+          }
         });
 
         const n = ts.length;
@@ -1479,6 +1510,56 @@
             ? `${n} clip${n !== 1 ? "s" : ""} here · ${totalGoals} total`
             : `${n} clip${n !== 1 ? "s" : ""} marked`;
         generateBtn.disabled = totalGoals === 0;
+        updateHighlightedTimestamp();
+
+        if (scrollToEl) {
+          scrollToEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }
+
+      function updateHighlightedTimestamp() {
+        if (activeIdx < 0 || isNaN(video.currentTime)) return;
+        const curTime = video.currentTime;
+        const currentVideo = videos[activeIdx];
+        const currentUploadId = currentVideo ? currentVideo.uploadId : null;
+
+        // 1. Highlight matches in the main tsList if visible
+        if (tsList.style.display !== "none") {
+          const ts = currentVideo ? currentVideo.timestamps : [];
+          const items = tsList.querySelectorAll(".ts-item");
+          ts.forEach((entry, i) => {
+            const li = items[i];
+            if (!li) return;
+            const start = Math.max(0, entry.t - settings.pre);
+            const end = entry.t + settings.post;
+            if (curTime >= start && curTime <= end) {
+              li.classList.add("active");
+            } else {
+              li.classList.remove("active");
+            }
+          });
+        }
+
+        // 2. Highlight matches in the orderList if visible
+        if (orderPanel.style.display === "flex") {
+          const order = clipOrder !== null ? clipOrder : getDefaultOrder();
+          const items = orderList.querySelectorAll(".order-item");
+          order.forEach((clip, i) => {
+            const li = items[i];
+            if (!li) return;
+            const start = Math.max(0, clip.t - settings.pre);
+            const end = clip.t + settings.post;
+            if (
+              clip.uploadId === currentUploadId &&
+              curTime >= start &&
+              curTime <= end
+            ) {
+              li.classList.add("active");
+            } else {
+              li.classList.remove("active");
+            }
+          });
+        }
       }
 
       // Display format: M:SS or H:MM:SS
@@ -1592,6 +1673,7 @@
           });
           orderList.appendChild(li);
         });
+        updateHighlightedTimestamp();
       }
 
       reorderBtn.addEventListener("click", openOrderPanel);
@@ -1636,6 +1718,7 @@
           settings.pre = v;
           saveSession();
           retriggerPreclips();
+          updateHighlightedTimestamp();
         } else {
           preInput.value = settings.pre;
         }
@@ -1646,6 +1729,7 @@
           settings.post = v;
           saveSession();
           retriggerPreclips();
+          updateHighlightedTimestamp();
         } else {
           postInput.value = settings.post;
         }
@@ -1775,7 +1859,7 @@
           resumeInfo.textContent = `${segments} · ${goals} stamped`;
           resumeWrap.style.display = "flex";
           resumeBtn.onclick = () =>
-            resumeSession(available, data.clipOrder || null);
+            resumeSession(available, data.clipOrder || null, data.settings);
         } catch (e) {}
       }
 

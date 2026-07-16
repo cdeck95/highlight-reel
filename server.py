@@ -117,11 +117,13 @@ def _source_transcode(uid: str, orig_path: Path) -> None:
         subprocess.run([
             "ffmpeg", "-y", "-i", str(orig_path),
             "-vf", "scale=-2:min(ih\\,1080),format=yuv420p",
+            "-fps_mode", "cfr",       # force constant frame rate (normalises VFR sources)
             "-c:v", "libx264", "-preset", "fast", "-crf", "20",
             "-maxrate", "5M", "-bufsize", "10M",
             "-color_range", "tv", "-colorspace", "bt709",
             "-color_trc", "bt709", "-color_primaries", "bt709",
             "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-ac", "2",
+            "-af", "aresample=async=1000",  # resync audio to video timeline
             "-movflags", "+faststart",
             str(source_path),
         ], check=True, capture_output=True)

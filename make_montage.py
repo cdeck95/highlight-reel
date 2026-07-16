@@ -155,16 +155,16 @@ def extract_clip(src: str, start: float, duration: float, out: str) -> None:
     """Cut and re-encode a clip so all clips share a clean, common timebase."""
     cmd = [
         "ffmpeg", "-y",
-        "-ss", f"{start:.3f}",        # seek before opening (fast)
         "-i", src,
+        "-ss", f"{start:.3f}",        # accurate seek (after -i) keeps A/V in sync
         "-t", f"{duration:.3f}",
         "-vf", "scale=-2:min(ih\\,1080),format=yuv420p",  # 1080p max + force limited-range
+        "-fps_mode", "cfr",           # force constant frame rate (fixes slowdown)
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
         "-maxrate", "5M", "-bufsize", "10M",
         "-color_range", "tv", "-colorspace", "bt709",
         "-color_trc", "bt709", "-color_primaries", "bt709",
         "-c:a", "aac", "-ar", "44100", "-ac", "2",
-        "-avoid_negative_ts", "make_zero",
         "-movflags", "+faststart",
         out,
     ]
