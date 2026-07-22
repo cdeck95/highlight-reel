@@ -1092,7 +1092,7 @@
           <div id="order-active-bar"></div>
           <div id="clip-settings">
             <div class="settings-label">Clip Settings</div>
-            <div class="settings-row">
+            <div class="settings-row" id="prepost-row">
               <div class="settings-field">
                 <label for="pre-input">Pre-roll</label>
                 <input
@@ -1241,6 +1241,7 @@
         document.getElementById("hint-adv-e").style.display = isAdv
           ? ""
           : "none";
+        document.getElementById("prepost-row").style.display = isAdv ? "none" : "";
         if (!isAdv) {
           advancedPendingStart = null;
           updateAdvancedRecordingUI();
