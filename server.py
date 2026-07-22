@@ -228,7 +228,10 @@ def session_save():
             clean_settings = {"pre": s_pre, "post": s_post, "transition": s_trans}
         except (TypeError, ValueError):
             pass
-    SESSION_FILE.write_text(json.dumps({"videos": clean, "clipOrder": clean_order, "settings": clean_settings}))
+    app_mode = data.get("appMode", "simple")
+    if app_mode not in ("simple", "advanced"):
+        app_mode = "simple"
+    SESSION_FILE.write_text(json.dumps({"videos": clean, "clipOrder": clean_order, "settings": clean_settings, "appMode": app_mode}))
     return jsonify({"ok": True})
 
 
@@ -265,7 +268,7 @@ def session_load():
                 _uploads[uid] = entry
         available = _uploads.get(uid, {}).get("status") == "ready"
         result.append({**v, "available": available})
-    return jsonify({"videos": result, "clipOrder": data.get("clipOrder"), "settings": data.get("settings")})
+    return jsonify({"videos": result, "clipOrder": data.get("clipOrder"), "settings": data.get("settings"), "appMode": data.get("appMode", "simple")})
 
 
 @app.route("/upload/status/<uid>")
@@ -361,16 +364,27 @@ def generate():
     for entry in clip_list:
         uid = entry.get("upload_id", "")
         ts = entry.get("timestamp")
+        start_t = entry.get("start")
+        end_t = entry.get("end")
         if not _valid_uuid(uid):
             return jsonify({"error": f"invalid upload_id: {uid}"}), 400
-        if not isinstance(ts, (int, float)):
+        has_explicit = start_t is not None and end_t is not None
+        if has_explicit:
+            if not isinstance(start_t, (int, float)) or not isinstance(end_t, (int, float)):
+                return jsonify({"error": "invalid start/end"}), 400
+            if float(end_t) <= float(start_t):
+                return jsonify({"error": "end must be after start"}), 400
+        elif not isinstance(ts, (int, float)):
             return jsonify({"error": "invalid timestamp"}), 400
         if _uploads.get(uid, {}).get("status") != "ready":
             return jsonify({"error": f"upload {uid} not ready"}), 400
         source_path = _get_source_path(uid)
         if not source_path.exists():
             return jsonify({"error": f"video not found for {uid}"}), 404
-        sources.append((uid, str(source_path), [float(ts)]))
+        if has_explicit:
+            sources.append((uid, str(source_path), None, float(start_t), float(end_t)))
+        else:
+            sources.append((uid, str(source_path), [float(ts)], None, None))
 
     pre        = max(0.5, min(float(data.get("pre",        4.5)), 30.0))
     post       = max(0.5, min(float(data.get("post",       2.5)), 30.0))
@@ -392,23 +406,28 @@ def generate():
 
 def _run_montage(job_id: str, sources: list, output_path: str,
                  pre: float = 4.5, post: float = 2.5, transition: float = 0.5) -> None:
-    """sources = [(uid, video_path, [timestamp_floats]), ...]"""
+    """sources = [(uid, video_path, raw_ts_or_None, explicit_start_or_None, explicit_end_or_None), ...]"""
     try:
-        all_parsed = [
-            (uid, vpath, [mm.parse_timestamp(str(t)) for t in raw_ts])
-            for uid, vpath, raw_ts in sources
-        ]
-        total = sum(len(ts) for _, _, ts in all_parsed)
-
         # Build flat task list so extraction can be parallelised.
         tasks = []
         clip_num = 0
-        for uid, video_path, parsed in all_parsed:
-            for ts in parsed:
+        total = sum(
+            1 if explicit_start is not None else len(raw_ts)
+            for _, _, raw_ts, explicit_start, _ in sources
+        )
+        for uid, video_path, raw_ts, explicit_start, explicit_end in sources:
+            if explicit_start is not None:
+                # Advanced mode: explicit start/end timestamps
                 clip_num += 1
-                start = max(0.0, ts - pre)
-                duration = (ts + post) - start
-                tasks.append((clip_num, video_path, start, duration, _preclip_key(uid, ts)))
+                start = explicit_start
+                duration = explicit_end - explicit_start
+                tasks.append((clip_num, video_path, start, duration, None))
+            else:
+                for ts in [mm.parse_timestamp(str(t)) for t in raw_ts]:
+                    clip_num += 1
+                    start = max(0.0, ts - pre)
+                    duration = (ts + post) - start
+                    tasks.append((clip_num, video_path, start, duration, _preclip_key(uid, ts)))
 
         with tempfile.TemporaryDirectory(prefix="montage_") as tmpdir:
             clips_by_num: dict = {}
@@ -419,20 +438,21 @@ def _run_montage(job_id: str, sources: list, output_path: str,
                 if _jobs[job_id].get("cancel"):
                     return task[0], None
                 n, video_path, start, duration, key = task
-                # Re-use pre-extracted clip only if dimensions match
-                pre_info = _preclips.get(key, {})
-                if (pre_info.get("status") == "ready"
-                        and pre_info.get("pre") == pre
-                        and pre_info.get("post") == post):
-                    cached = pre_info.get("path", "")
-                    if cached and Path(cached).exists():
-                        with done_lock:
-                            done_count[0] += 1
-                            _jobs[job_id]["progress"] = (
-                                f"Assembling clip {done_count[0]} of {total}…"
-                            )
-                            _jobs[job_id]["pct"] = int(done_count[0] / total * 85)
-                        return n, cached
+                # Re-use pre-extracted clip only if key exists and dimensions match
+                if key is not None:
+                    pre_info = _preclips.get(key, {})
+                    if (pre_info.get("status") == "ready"
+                            and pre_info.get("pre") == pre
+                            and pre_info.get("post") == post):
+                        cached = pre_info.get("path", "")
+                        if cached and Path(cached).exists():
+                            with done_lock:
+                                done_count[0] += 1
+                                _jobs[job_id]["progress"] = (
+                                    f"Assembling clip {done_count[0]} of {total}…"
+                                )
+                                _jobs[job_id]["pct"] = int(done_count[0] / total * 85)
+                            return n, cached
                 clip_path = os.path.join(tmpdir, f"clip_{n:04d}.mp4")
                 mm.extract_clip(video_path, start, duration, clip_path)
                 with done_lock:

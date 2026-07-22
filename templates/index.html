@@ -838,6 +838,114 @@
         font-size: 0.82rem;
         color: #555;
       }
+
+      /* ── Mode toggle (upload screen) ────────────────────────────── */
+      #mode-toggle {
+        display: flex;
+        border: 1px solid #2e3140;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .mode-btn {
+        padding: 8px 22px;
+        background: none;
+        border: none;
+        color: #555;
+        font-size: 0.88rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .mode-btn.active {
+        background: #7c6ff7;
+        color: #fff;
+      }
+      .mode-btn:hover:not(.active) {
+        color: #999;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      /* ── Advanced mode recording indicator ─────────────────────── */
+      #adv-record-wrap {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        margin: 12px 18px 4px;
+      }
+      #adv-record-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        background: #1c1d28;
+        border-radius: 9px;
+        font-size: 0.82rem;
+        color: #888;
+        border: 1px solid transparent;
+      }
+      #adv-record-status.recording {
+        border-color: #e05555;
+        background: rgba(224, 85, 85, 0.08);
+        color: #e08080;
+      }
+      .rec-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #3a3a50;
+        flex-shrink: 0;
+        transition: background 0.2s;
+      }
+      #adv-record-status.recording .rec-dot {
+        background: #e05555;
+        box-shadow: 0 0 6px #e05555;
+        animation: pulse-rec 1s ease-in-out infinite;
+      }
+      @keyframes pulse-rec {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      #adv-start-btn {
+        background: #7c6ff7;
+      }
+      #adv-start-btn:hover {
+        background: #6a5edc;
+      }
+      #adv-start-btn kbd {
+        font-size: 0.68rem;
+        color: rgba(255, 255, 255, 0.55);
+        background: #5a50c0;
+        border-color: #4a42a8;
+      }
+      #adv-end-btn {
+        background: #2563a8;
+      }
+      #adv-end-btn:hover:not(:disabled) {
+        background: #1d5090;
+      }
+      #adv-end-btn:disabled {
+        background: #1c1d28;
+        color: #3a3b50;
+        cursor: not-allowed;
+      }
+      #adv-end-btn kbd {
+        font-size: 0.68rem;
+        color: rgba(255, 255, 255, 0.55);
+        background: #1a4580;
+        border-color: #153670;
+      }
+
+      .ts-tag.clip {
+        background: rgba(63, 185, 80, 0.2);
+        color: #7ad987;
+      }
     </style>
   </head>
   <body>
@@ -846,6 +954,13 @@
       <div class="logo">
         <h1>🎬 Highlight Reel - Montage Maker</h1>
         <p>Upload a game video, mark your clips, download highlights.</p>
+      </div>
+
+      <div id="mode-toggle">
+        <button class="mode-btn active" id="simple-mode-btn">
+          Simple Mode
+        </button>
+        <button class="mode-btn" id="advanced-mode-btn">Advanced Editor</button>
       </div>
 
       <div
@@ -898,8 +1013,14 @@
           <span class="hint"><kbd>→</kbd> Forward 10 s</span>
           <span class="hint"><kbd>Space</kbd> Play / Pause</span>
           <span class="hint"><kbd>Hold Space</kbd> 2× speed</span>
-          <span class="hint"><kbd>G</kbd> Goal</span>
-          <span class="hint"><kbd>S</kbd> Save</span>
+          <span class="hint" id="hint-g"><kbd>G</kbd> Goal</span>
+          <span class="hint" id="hint-s"><kbd>S</kbd> Save</span>
+          <span class="hint" id="hint-adv-s" style="display: none"
+            ><kbd>S</kbd> Start clip</span
+          >
+          <span class="hint" id="hint-adv-e" style="display: none"
+            ><kbd>E</kbd> End clip</span
+          >
           <span class="hint"
             ><kbd>P</kbd> Speed
             <span id="speed-badge" style="color: #b3adff">1×</span></span
@@ -929,6 +1050,21 @@
           <button id="stamp-save-btn" class="stamp-btn">
             🧤 Save <kbd>S</kbd>
           </button>
+        </div>
+
+        <div id="adv-record-wrap">
+          <div id="adv-record-status">
+            <span class="rec-dot"></span>
+            <span id="adv-record-label">Press S to start a clip</span>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <button id="adv-start-btn" class="stamp-btn">
+              ▶ Start <kbd>S</kbd>
+            </button>
+            <button id="adv-end-btn" class="stamp-btn" disabled>
+              ✂ End <kbd>E</kbd>
+            </button>
+          </div>
         </div>
 
         <ul id="ts-list"></ul>
@@ -1016,6 +1152,8 @@
       const speedSteps = [1.0, 1.25, 1.5, 2.0, 0.5];
       let speedIdx = 0;
       let clipOrder = null; // null = default; [{uploadId, t, type}] = custom order
+      let appMode = "simple"; // "simple" | "advanced"
+      let advancedPendingStart = null; // {t: float} | null
       const DEFAULT_SETTINGS = { pre: 4.5, post: 2.5, transition: 0.5 };
       let settings = { ...DEFAULT_SETTINGS };
 
@@ -1045,6 +1183,13 @@
       const genFill = document.getElementById("gen-fill");
       const genLabel = document.getElementById("gen-label");
       const cancelBtn = document.getElementById("cancel-btn");
+      const advRecordWrap = document.getElementById("adv-record-wrap");
+      const advRecordStatus = document.getElementById("adv-record-status");
+      const advRecordLabel = document.getElementById("adv-record-label");
+      const advEndBtn = document.getElementById("adv-end-btn");
+      const advStartBtn = document.getElementById("adv-start-btn");
+      const simpleModeBtn = document.getElementById("simple-mode-btn");
+      const advancedModeBtn = document.getElementById("advanced-mode-btn");
 
       let activeJobId = null;
       let activeJobInterval = null;
@@ -1075,6 +1220,41 @@
       const preInput = document.getElementById("pre-input");
       const postInput = document.getElementById("post-input");
       const transitionSelect = document.getElementById("transition-select");
+
+      // ─────────────────────────────────────────────
+      // App mode (Simple / Advanced)
+      // ─────────────────────────────────────────────
+      function setAppMode(mode) {
+        appMode = mode;
+        const isAdv = mode === "advanced";
+        simpleModeBtn.classList.toggle("active", !isAdv);
+        advancedModeBtn.classList.toggle("active", isAdv);
+        document.getElementById("stamp-btns").style.display = isAdv
+          ? "none"
+          : "";
+        advRecordWrap.style.display = isAdv ? "flex" : "none";
+        document.getElementById("hint-g").style.display = isAdv ? "none" : "";
+        document.getElementById("hint-s").style.display = isAdv ? "none" : "";
+        document.getElementById("hint-adv-s").style.display = isAdv
+          ? ""
+          : "none";
+        document.getElementById("hint-adv-e").style.display = isAdv
+          ? ""
+          : "none";
+        if (!isAdv) {
+          advancedPendingStart = null;
+          updateAdvancedRecordingUI();
+        }
+      }
+
+      simpleModeBtn.addEventListener("click", () => {
+        setAppMode("simple");
+        saveSession();
+      });
+      advancedModeBtn.addEventListener("click", () => {
+        setAppMode("advanced");
+        saveSession();
+      });
 
       // ─────────────────────────────────────────────
       // Drag & drop
@@ -1308,13 +1488,25 @@
             break;
 
           case "KeyG":
+            if (appMode === "advanced") break;
             e.preventDefault();
             stampClip("goal");
             break;
 
           case "KeyS":
             e.preventDefault();
-            stampClip("save");
+            if (appMode === "advanced") {
+              startAdvancedClip();
+            } else {
+              stampClip("save");
+            }
+            break;
+
+          case "KeyE":
+            if (appMode === "advanced") {
+              e.preventDefault();
+              endAdvancedClip();
+            }
             break;
 
           case "KeyP":
@@ -1434,7 +1626,9 @@
         video.pause();
         const t = video.currentTime;
         videos[activeIdx].timestamps.push({ t, type });
-        videos[activeIdx].timestamps.sort((a, b) => a.t - b.t);
+        videos[activeIdx].timestamps.sort(
+          (a, b) => (a.start ?? a.t) - (b.start ?? b.t),
+        );
         renderTimestamps(t);
         saveSession();
         // Fire-and-forget background pre-extraction so Generate is faster
@@ -1453,14 +1647,70 @@
         }
       }
 
+      // ─────────────────────────────────────────────
+      // Advanced mode clip functions
+      // ─────────────────────────────────────────────
+      function startAdvancedClip() {
+        if (activeIdx < 0 || isNaN(video.currentTime)) return;
+        advancedPendingStart = { t: video.currentTime };
+        updateAdvancedRecordingUI();
+      }
+
+      function endAdvancedClip() {
+        if (advancedPendingStart === null || activeIdx < 0) return;
+        const endT = video.currentTime;
+        const startT = advancedPendingStart.t;
+        if (endT <= startT) {
+          advancedPendingStart = null;
+          updateAdvancedRecordingUI();
+          return;
+        }
+        videos[activeIdx].timestamps.push({
+          start: startT,
+          end: endT,
+          type: "clip",
+        });
+        videos[activeIdx].timestamps.sort(
+          (a, b) => (a.start ?? a.t) - (b.start ?? b.t),
+        );
+        advancedPendingStart = null;
+        updateAdvancedRecordingUI();
+        renderTimestamps();
+        saveSession();
+        if (video.paused) video.play().catch(() => {});
+      }
+
+      function updateAdvancedRecordingUI() {
+        const isRec = advancedPendingStart !== null;
+        advEndBtn.disabled = !isRec;
+        if (isRec) {
+          advRecordStatus.classList.add("recording");
+          advRecordLabel.textContent = `Recording from ${fmtDisplay(advancedPendingStart.t)} — press E to end`;
+        } else {
+          advRecordStatus.classList.remove("recording");
+          advRecordLabel.textContent = "Press S to start a clip";
+        }
+      }
+
+      advStartBtn.addEventListener("click", startAdvancedClip);
+      advEndBtn.addEventListener("click", endAdvancedClip);
+
       function removeStamp(i, e) {
         e.stopPropagation();
         if (clipOrder !== null) {
           const uid = videos[activeIdx].uploadId;
           const clip = videos[activeIdx].timestamps[i];
-          const oi = clipOrder.findIndex(
-            (c) => c.uploadId === uid && c.t === clip.t && c.type === clip.type,
-          );
+          const oi = clipOrder.findIndex((c) => {
+            if (c.uploadId !== uid) return false;
+            if (clip.start !== undefined) {
+              return (
+                c.start === clip.start &&
+                c.end === clip.end &&
+                c.type === clip.type
+              );
+            }
+            return c.t === clip.t && c.type === clip.type;
+          });
           if (oi !== -1) clipOrder.splice(oi, 1);
           if (clipOrder.length === 0) clipOrder = null;
           updateOrderActiveBar();
@@ -1484,18 +1734,23 @@
           const li = document.createElement("li");
           li.className = "ts-item";
           li.title = "Click to seek";
+          const isAdv = entry.start !== undefined;
+          const displayTime = isAdv
+            ? `${fmtDisplay(entry.start)} → ${fmtDisplay(entry.end)}`
+            : fmtDisplay(entry.t);
+          const seekTime = isAdv ? entry.start : entry.t;
           li.innerHTML = `
       <span class="ts-index">${i + 1}</span>
-      <span class="ts-time">${fmtDisplay(entry.t)}</span>
+      <span class="ts-time">${displayTime}</span>
       <span class="ts-tag ${entry.type}">${entry.type}</span>
       <button class="ts-del" title="Remove">✕</button>`;
           li.querySelector(".ts-del").addEventListener("click", (e) =>
             removeStamp(i, e),
           );
-          li.addEventListener("click", () => seekTo(entry.t));
+          li.addEventListener("click", () => seekTo(seekTime));
           tsList.appendChild(li);
 
-          if (scrollToTime !== undefined && entry.t === scrollToTime) {
+          if (scrollToTime !== undefined && seekTime === scrollToTime) {
             scrollToEl = li;
           }
         });
@@ -1530,8 +1785,14 @@
           ts.forEach((entry, i) => {
             const li = items[i];
             if (!li) return;
-            const start = Math.max(0, entry.t - settings.pre);
-            const end = entry.t + settings.post;
+            let start, end;
+            if (entry.start !== undefined) {
+              start = entry.start;
+              end = entry.end;
+            } else {
+              start = Math.max(0, entry.t - settings.pre);
+              end = entry.t + settings.post;
+            }
             if (curTime >= start && curTime <= end) {
               li.classList.add("active");
             } else {
@@ -1547,12 +1808,18 @@
           order.forEach((clip, i) => {
             const li = items[i];
             if (!li) return;
-            const start = Math.max(0, clip.t - settings.pre);
-            const end = clip.t + settings.post;
+            let clipStart, clipEnd;
+            if (clip.start !== undefined) {
+              clipStart = clip.start;
+              clipEnd = clip.end;
+            } else {
+              clipStart = Math.max(0, clip.t - settings.pre);
+              clipEnd = clip.t + settings.post;
+            }
             if (
               clip.uploadId === currentUploadId &&
-              curTime >= start &&
-              curTime <= end
+              curTime >= clipStart &&
+              curTime <= clipEnd
             ) {
               li.classList.add("active");
             } else {
@@ -1581,7 +1848,16 @@
         const order = [];
         for (const v of videos) {
           for (const ts of v.timestamps) {
-            order.push({ uploadId: v.uploadId, t: ts.t, type: ts.type });
+            if (ts.start !== undefined) {
+              order.push({
+                uploadId: v.uploadId,
+                start: ts.start,
+                end: ts.end,
+                type: ts.type,
+              });
+            } else {
+              order.push({ uploadId: v.uploadId, t: ts.t, type: ts.type });
+            }
           }
         }
         return order;
@@ -1632,11 +1908,15 @@
           li.className = "order-item";
           li.draggable = true;
           li.dataset.idx = i;
+          const isAdvClip = clip.start !== undefined;
+          const orderTimeStr = isAdvClip
+            ? `${fmtDisplay(clip.start)} → ${fmtDisplay(clip.end)}`
+            : fmtDisplay(clip.t);
           li.innerHTML = `
             <span class="drag-handle">⠿</span>
             <span class="order-num">${i + 1}</span>
             <span class="order-vid" title="${vidName}">${vidName}</span>
-            <span class="order-time">${fmtDisplay(clip.t)}</span>
+            <span class="order-time">${orderTimeStr}</span>
             <span class="ts-tag ${clip.type}">${clip.type}</span>`;
           li.addEventListener("dragstart", (e) => {
             _dragSrcIdx = i;
@@ -1698,6 +1978,7 @@
         for (const v of videos) {
           if (!v.uploadId) continue;
           for (const ts of v.timestamps) {
+            if (ts.start !== undefined) continue; // advanced clips don't use pre/post roll
             fetch("/preclip", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -1755,10 +2036,12 @@
         downloadBar.style.display = "none";
 
         const payload = {
-          clips: effectiveOrder.map((c) => ({
-            upload_id: c.uploadId,
-            timestamp: c.t,
-          })),
+          clips: effectiveOrder.map((c) => {
+            if (c.start !== undefined) {
+              return { upload_id: c.uploadId, start: c.start, end: c.end };
+            }
+            return { upload_id: c.uploadId, timestamp: c.t };
+          }),
           pre: settings.pre,
           post: settings.post,
           transition: settings.transition,
@@ -1835,6 +2118,7 @@
               })),
               clipOrder: clipOrder,
               settings: settings,
+              appMode: appMode,
             }),
           }).catch(() => {});
         }, 400);
@@ -1859,11 +2143,21 @@
           resumeInfo.textContent = `${segments} · ${goals} stamped`;
           resumeWrap.style.display = "flex";
           resumeBtn.onclick = () =>
-            resumeSession(available, data.clipOrder || null, data.settings);
+            resumeSession(
+              available,
+              data.clipOrder || null,
+              data.settings,
+              data.appMode || "simple",
+            );
         } catch (e) {}
       }
 
-      function resumeSession(savedVideos, savedClipOrder, savedSettings) {
+      function resumeSession(
+        savedVideos,
+        savedClipOrder,
+        savedSettings,
+        savedAppMode,
+      ) {
         resumeWrap.style.display = "none";
         for (const sv of savedVideos) {
           // Normalize old sessions that stored plain floats
@@ -1885,6 +2179,9 @@
         if (savedSettings) {
           settings = { ...DEFAULT_SETTINGS, ...savedSettings };
           applySettingsToInputs();
+        }
+        if (savedAppMode && savedAppMode !== appMode) {
+          setAppMode(savedAppMode);
         }
         loadPlayer(`/preview/${savedVideos[0].uploadId}`, 0);
       }
