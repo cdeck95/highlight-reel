@@ -182,29 +182,52 @@ Keep the PowerShell window open while you're using the app. To stop the server w
 
 ![Player screen](public_assets/example%201.png)
 
+### Choose a mode
+
+Before uploading, select your editing mode using the toggle at the top of the screen:
+
+- **Simple Mode** — stamp clips at a single point in time. Pre-roll and post-roll settings control how many seconds before/after that point to include. Best for quick goal/save highlights.
+- **Advanced Editor** — manually mark the exact start and end of each clip using `S` and `E` while the video plays. Best when you want full control over clip boundaries.
+
 ### Upload a video
 
 1. Drag your video file onto the upload area, or click it to browse.
 2. **Skip transcoding** is checked by default — leave it on for faster loading. Uncheck it only if the video stutters badly while seeking.
 3. Wait for "Ready" to appear. Large files may take a moment.
 
-### Mark clips
+### Mark clips — Simple Mode
 
 Once the video loads, use keyboard shortcuts to navigate and stamp clips:
 
-| Key          | Action                                       |
-| ------------ | -------------------------------------------- |
-| `Space`      | Play / Pause (also click the video directly) |
-| `←`          | Back 5 seconds                               |
-| `→`          | Forward 10 seconds                           |
-| `G`          | Stamp a **goal** clip at current time        |
-| `S`          | Stamp a **save** clip at current time        |
+| Key          | Action                                               |
+| ------------ | ---------------------------------------------------- |
+| `Space`      | Play / Pause (also click the video directly)         |
+| `←`          | Back 5 seconds                                       |
+| `→`          | Forward 10 seconds                                   |
+| `G`          | Stamp a **goal** clip at current time                |
+| `S`          | Stamp a **save** clip at current time                |
 | `P`          | Cycle playback speed (1× → 1.25× → 1.5× → 2× → 0.5×) |
-| Hold `Space` | Fast forward (2×) while held                        |
+| Hold `Space` | Fast forward (2×) while held                         |
 
 Click any timestamp in the list to jump to it, or click the `×` next to a timestamp to remove it.
 
 Goal clips are shown with a purple badge; save clips with a blue badge.
+
+### Mark clips — Advanced Editor
+
+In Advanced Editor mode the Goal/Save buttons are replaced by a **Start / End** workflow:
+
+| Key          | Action                                                    |
+| ------------ | --------------------------------------------------------- |
+| `Space`      | Play / Pause                                              |
+| `←`          | Back 5 seconds                                            |
+| `→`          | Forward 10 seconds                                        |
+| `S`          | **Start** a clip at the current position (red dot pulses) |
+| `E`          | **End** the clip — saves it and resumes playback          |
+| `P`          | Cycle playback speed                                      |
+| Hold `Space` | Fast forward (2×) while held                              |
+
+Clips are shown with a green "clip" badge and display their full `start → end` range. You can mix advanced clips with simple-mode goal/save clips in the same session by switching modes between stamps.
 
 ### Add another video
 
@@ -232,13 +255,13 @@ Clips are pre-extracted in the background as you stamp them, so generation is us
 
 In the sidebar footer, the **Clip Settings** panel lets you customise timing and transitions before generating:
 
-| Setting    | Default         | Description                                                  |
-| ---------- | --------------- | ------------------------------------------------------------ |
-| Pre-roll   | 4.5 s           | Seconds before the timestamp to start the clip               |
-| Post-roll  | 2.5 s           | Seconds after the timestamp to end the clip                  |
-| Transition | Crossfade 0.5 s | How clips are joined — hard cut or crossfade (0.3 s – 2.0 s) |
+| Setting    | Default         | Description                                                                        |
+| ---------- | --------------- | ---------------------------------------------------------------------------------- |
+| Pre-roll   | 4.5 s           | Seconds before a Simple Mode timestamp to start the clip                           |
+| Post-roll  | 2.5 s           | Seconds after a Simple Mode timestamp to end the clip                              |
+| Transition | Crossfade 0.5 s | How clips are joined — hard cut or crossfade (0.3 s – 2.0 s). Applies to all clips |
 
-Changing pre-roll or post-roll after stamping clips will automatically re-extract clips in the background.
+Changing pre-roll or post-roll after stamping Simple Mode clips will automatically re-extract those clips in the background. Advanced Editor clips always use their exact marked start/end and are unaffected by pre-roll and post-roll.
 
 ---
 
