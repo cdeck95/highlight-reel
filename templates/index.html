@@ -946,6 +946,139 @@
         background: rgba(63, 185, 80, 0.2);
         color: #7ad987;
       }
+
+      /* ── Select & Generate ───────────────────────────────────────── */
+      #select-generate-btn {
+        padding: 8px 0;
+        background: none;
+        border: 1px solid #1e2030;
+        border-radius: 9px;
+        color: #5a5a80;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+      #select-generate-btn:hover:not(:disabled) {
+        border-color: #3a3a60;
+        color: #9090c0;
+      }
+      #select-generate-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      #sel-panel {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+      }
+      #sel-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 18px;
+        border-bottom: 1px solid #1e1f2a;
+        flex-shrink: 0;
+      }
+      #sel-header-title {
+        flex: 1;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #aaa;
+      }
+      #sel-all-btn,
+      #sel-none-btn {
+        background: none;
+        border: none;
+        color: #555;
+        font-size: 0.78rem;
+        cursor: pointer;
+        text-decoration: underline;
+        padding: 0;
+      }
+      #sel-all-btn:hover,
+      #sel-none-btn:hover {
+        color: #999;
+      }
+      #sel-cancel-btn {
+        background: none;
+        border: none;
+        color: #555;
+        font-size: 0.85rem;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: color 0.12s;
+      }
+      #sel-cancel-btn:hover {
+        color: #ccc;
+      }
+      #sel-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 4px 0;
+        list-style: none;
+        margin: 0;
+      }
+      #sel-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      #sel-list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #sel-list::-webkit-scrollbar-thumb {
+        background: #2a2b3a;
+        border-radius: 2px;
+      }
+      .sel-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 18px;
+        cursor: pointer;
+        user-select: none;
+        border-bottom: 1px solid #0e0f16;
+        transition: background 0.1s;
+      }
+      .sel-item:hover {
+        background: #14141e;
+      }
+      .sel-item.sel-checked {
+        background: rgba(124, 111, 247, 0.06);
+      }
+      .sel-checkbox {
+        accent-color: #7c6ff7;
+        width: 14px;
+        height: 14px;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      #sel-footer {
+        padding: 12px 18px;
+        border-top: 1px solid #1e1f2a;
+      }
+      #sel-generate-btn {
+        width: 100%;
+        padding: 11px 0;
+        background: #3fb950;
+        border: none;
+        border-radius: 9px;
+        color: #000;
+        font-size: 0.9rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #sel-generate-btn:hover:not(:disabled) {
+        background: #34a044;
+      }
+      #sel-generate-btn:disabled {
+        background: #1e3022;
+        color: #3a5a3e;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
@@ -1078,6 +1211,19 @@
           <ul id="order-list"></ul>
         </div>
 
+        <div id="sel-panel">
+          <div id="sel-header">
+            <span id="sel-header-title">Select Clips to Export</span>
+            <button id="sel-all-btn">All</button>
+            <button id="sel-none-btn">None</button>
+            <button id="sel-cancel-btn">✕</button>
+          </div>
+          <ul id="sel-list"></ul>
+          <div id="sel-footer">
+            <button id="sel-generate-btn" disabled>Generate</button>
+          </div>
+        </div>
+
         <div id="ts-footer">
           <button id="generate-btn" disabled>Generate Montage</button>
           <div id="gen-progress">
@@ -1129,6 +1275,9 @@
             </select>
           </div>
           <button id="reorder-btn">⠿ Reorder Clips</button>
+          <button id="select-generate-btn" disabled>
+            ☑ Generate Selected…
+          </button>
           <button id="new-video-btn">↩ Load different video</button>
         </div>
       </div>
@@ -1154,6 +1303,7 @@
       let clipOrder = null; // null = default; [{uploadId, t, type}] = custom order
       let appMode = "simple"; // "simple" | "advanced"
       let advancedPendingStart = null; // {t: float} | null
+      let selectionChecked = new Set();
       const DEFAULT_SETTINGS = { pre: 4.5, post: 2.5, transition: 0.5 };
       let settings = { ...DEFAULT_SETTINGS };
 
@@ -1203,6 +1353,7 @@
         genProgress.style.display = "none";
         generateBtn.disabled = false;
         generateBtn.textContent = "Generate Montage";
+        selectGenerateBtn.disabled = false;
         fetch(`/generate/cancel/${jid}`, { method: "POST" }).catch(() => {});
       });
       const overlay = document.getElementById("status-overlay");
@@ -1214,6 +1365,9 @@
       const orderPanel = document.getElementById("order-panel");
       const orderList = document.getElementById("order-list");
       const reorderBtn = document.getElementById("reorder-btn");
+      const selectGenerateBtn = document.getElementById("select-generate-btn");
+      const selPanel = document.getElementById("sel-panel");
+      const tsFooter = document.getElementById("ts-footer");
       const orderActiveBar = document.getElementById("order-active-bar");
       const orderDoneBtn = document.getElementById("order-done-btn");
       const orderResetBtn = document.getElementById("order-reset-btn");
@@ -1241,7 +1395,9 @@
         document.getElementById("hint-adv-e").style.display = isAdv
           ? ""
           : "none";
-        document.getElementById("prepost-row").style.display = isAdv ? "none" : "";
+        document.getElementById("prepost-row").style.display = isAdv
+          ? "none"
+          : "";
         if (!isAdv) {
           advancedPendingStart = null;
           updateAdvancedRecordingUI();
@@ -1766,6 +1922,7 @@
             ? `${n} clip${n !== 1 ? "s" : ""} here · ${totalGoals} total`
             : `${n} clip${n !== 1 ? "s" : ""} marked`;
         generateBtn.disabled = totalGoals === 0;
+        selectGenerateBtn.disabled = totalGoals === 0;
         updateHighlightedTimestamp();
 
         if (scrollToEl) {
@@ -1966,6 +2123,112 @@
       });
 
       // ─────────────────────────────────────────────
+      // Selection mode
+      // ─────────────────────────────────────────────
+      function openSelectionPanel() {
+        if (orderPanel.style.display === "flex") closeOrderPanel();
+        const order = clipOrder !== null ? clipOrder : getDefaultOrder();
+        selectionChecked = new Set(order.map((_, i) => i));
+        renderSelectionPanel();
+        tsList.style.display = "none";
+        document.getElementById("stamp-btns").style.display = "none";
+        advRecordWrap.style.display = "none";
+        reorderBtn.style.display = "none";
+        orderActiveBar.style.display = "none";
+        tsFooter.style.display = "none";
+        selPanel.style.display = "flex";
+      }
+
+      function closeSelectionPanel() {
+        selPanel.style.display = "none";
+        tsFooter.style.display = "";
+        tsList.style.display = "";
+        if (appMode === "advanced") {
+          advRecordWrap.style.display = "flex";
+        } else {
+          document.getElementById("stamp-btns").style.display = "";
+        }
+        reorderBtn.style.display = "";
+        updateOrderActiveBar();
+      }
+
+      function renderSelectionPanel() {
+        const order = clipOrder !== null ? clipOrder : getDefaultOrder();
+        const selListEl = document.getElementById("sel-list");
+        selListEl.innerHTML = "";
+        order.forEach((clip, i) => {
+          const vid = videos.find((v) => v.uploadId === clip.uploadId);
+          const vidName = vid
+            ? vid.name.replace(/\.[^.]+$/, "").slice(0, 24)
+            : clip.uploadId.slice(0, 8);
+          const li = document.createElement("li");
+          const checked = selectionChecked.has(i);
+          li.className = "sel-item" + (checked ? " sel-checked" : "");
+          const isAdvClip = clip.start !== undefined;
+          const timeStr = isAdvClip
+            ? `${fmtDisplay(clip.start)} → ${fmtDisplay(clip.end)}`
+            : fmtDisplay(clip.t);
+          li.innerHTML = `
+            <input type="checkbox" class="sel-checkbox" data-idx="${i}" ${checked ? "checked" : ""}>
+            <span class="order-num">${i + 1}</span>
+            <span class="order-vid" title="${vidName}">${vidName}</span>
+            <span class="order-time">${timeStr}</span>
+            <span class="ts-tag ${clip.type}">${clip.type}</span>`;
+          const cb = li.querySelector(".sel-checkbox");
+          cb.addEventListener("change", (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            if (e.target.checked) {
+              selectionChecked.add(idx);
+              li.classList.add("sel-checked");
+            } else {
+              selectionChecked.delete(idx);
+              li.classList.remove("sel-checked");
+            }
+            updateSelectionFooter();
+          });
+          li.addEventListener("click", (e) => {
+            if (e.target === cb) return;
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event("change"));
+          });
+          selListEl.appendChild(li);
+        });
+        updateSelectionFooter();
+      }
+
+      function updateSelectionFooter() {
+        const n = selectionChecked.size;
+        const btn = document.getElementById("sel-generate-btn");
+        btn.disabled = n === 0;
+        btn.textContent =
+          n === 0
+            ? "No clips selected"
+            : `Generate ${n} clip${n !== 1 ? "s" : ""}`;
+      }
+
+      document.getElementById("sel-all-btn").addEventListener("click", () => {
+        const order = clipOrder !== null ? clipOrder : getDefaultOrder();
+        selectionChecked = new Set(order.map((_, i) => i));
+        renderSelectionPanel();
+      });
+      document.getElementById("sel-none-btn").addEventListener("click", () => {
+        selectionChecked = new Set();
+        renderSelectionPanel();
+      });
+      document
+        .getElementById("sel-cancel-btn")
+        .addEventListener("click", closeSelectionPanel);
+      document
+        .getElementById("sel-generate-btn")
+        .addEventListener("click", async () => {
+          const order = clipOrder !== null ? clipOrder : getDefaultOrder();
+          const selected = order.filter((_, i) => selectionChecked.has(i));
+          closeSelectionPanel();
+          await startGenerate(selected);
+        });
+      selectGenerateBtn.addEventListener("click", openSelectionPanel);
+
+      // ─────────────────────────────────────────────
       // Clip settings
       // ─────────────────────────────────────────────
       function applySettingsToInputs() {
@@ -2024,12 +2287,10 @@
       // ─────────────────────────────────────────────
       // Generate montage
       // ─────────────────────────────────────────────
-      generateBtn.addEventListener("click", async () => {
-        const effectiveOrder =
-          clipOrder !== null ? clipOrder : getDefaultOrder();
+      async function startGenerate(effectiveOrder) {
         if (effectiveOrder.length === 0) return;
-
         generateBtn.disabled = true;
+        selectGenerateBtn.disabled = true;
         generateBtn.textContent = "Generating…";
         genFill.style.width = "0%";
         genLabel.textContent = "Starting…";
@@ -2056,11 +2317,18 @@
         if (error) {
           genProgress.style.display = "none";
           generateBtn.disabled = false;
+          selectGenerateBtn.disabled = false;
           generateBtn.textContent = "Generate Montage";
           alert("Error: " + error);
           return;
         }
         pollJob(job_id, effectiveOrder.length);
+      }
+
+      generateBtn.addEventListener("click", async () => {
+        const effectiveOrder =
+          clipOrder !== null ? clipOrder : getDefaultOrder();
+        await startGenerate(effectiveOrder);
       });
 
       function pollJob(jobId, totalClips) {
@@ -2078,6 +2346,7 @@
             genProgress.style.display = "none";
             generateBtn.disabled = false;
             generateBtn.textContent = "Generate Montage";
+            selectGenerateBtn.disabled = false;
             downloadLink.href = d.download_url;
             downloadNote.textContent = `Full resolution · ${totalClips} clip${totalClips !== 1 ? "s" : ""}`;
             downloadBar.style.display = "flex";
@@ -2088,6 +2357,7 @@
             genProgress.style.display = "none";
             generateBtn.disabled = false;
             generateBtn.textContent = "Generate Montage";
+            selectGenerateBtn.disabled = false;
             alert("Montage failed: " + (d.error || "unknown error"));
           } else if (d.status === "cancelled") {
             clearInterval(iv);
@@ -2096,6 +2366,7 @@
             genProgress.style.display = "none";
             generateBtn.disabled = false;
             generateBtn.textContent = "Generate Montage";
+            selectGenerateBtn.disabled = false;
           }
         }, 1500);
         activeJobInterval = iv;
