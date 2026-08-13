@@ -1786,6 +1786,10 @@
         videos[activeIdx].timestamps.sort(
           (a, b) => (a.start ?? a.t) - (b.start ?? b.t),
         );
+        if (clipOrder !== null) {
+          clipOrder.push({ uploadId: videos[activeIdx].uploadId, t, type });
+          updateOrderActiveBar();
+        }
         renderTimestamps(t);
         saveSession();
         // Fire-and-forget background pre-extraction so Generate is faster
@@ -1832,6 +1836,10 @@
         );
         advancedPendingStart = null;
         updateAdvancedRecordingUI();
+        if (clipOrder !== null) {
+          clipOrder.push({ uploadId: videos[activeIdx].uploadId, start: startT, end: endT, type: "clip" });
+          updateOrderActiveBar();
+        }
         renderTimestamps();
         saveSession();
         if (video.paused) video.play().catch(() => {});
