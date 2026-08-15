@@ -803,6 +803,14 @@
         border-color: #7c6ff7;
         color: #7c6ff7;
       }
+      .v-tab.tab-dragging {
+        opacity: 0.4;
+      }
+      .v-tab.tab-drag-over {
+        border-color: #7c6ff7;
+        background: rgba(124, 111, 247, 0.15);
+        color: #b3adff;
+      }
 
       /* ── Status overlay (transcoding / generating) ───────────────── */
       #status-overlay {
@@ -1567,6 +1575,7 @@
       // ─────────────────────────────────────────────
       // Tab bar
       // ─────────────────────────────────────────────
+      let _tabDragSrcIdx = -1;
       function renderTabs() {
         videoTabsEl.innerHTML = "";
         videos.forEach((v, i) => {
@@ -1581,7 +1590,53 @@
           } else {
             btn.textContent = v.previewUrl ? shortName : shortName + " ⋯";
           }
-          btn.title = v.name;
+          btn.title = v.name + " — drag to reorder";
+          btn.draggable = true;
+          btn.dataset.idx = i;
+
+          btn.addEventListener("dragstart", (e) => {
+            _tabDragSrcIdx = i;
+            e.dataTransfer.effectAllowed = "move";
+            setTimeout(() => btn.classList.add("tab-dragging"), 0);
+          });
+          btn.addEventListener("dragend", () => {
+            btn.classList.remove("tab-dragging");
+            videoTabsEl
+              .querySelectorAll(".v-tab")
+              .forEach((el) => el.classList.remove("tab-drag-over"));
+          });
+          btn.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            videoTabsEl
+              .querySelectorAll(".v-tab")
+              .forEach((el) => el.classList.remove("tab-drag-over"));
+            if (_tabDragSrcIdx !== i) btn.classList.add("tab-drag-over");
+          });
+          btn.addEventListener("dragleave", () =>
+            btn.classList.remove("tab-drag-over"),
+          );
+          btn.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const targetIdx = parseInt(btn.dataset.idx);
+            if (_tabDragSrcIdx === targetIdx) return;
+            // Reorder videos array
+            const [moved] = videos.splice(_tabDragSrcIdx, 1);
+            videos.splice(targetIdx, 0, moved);
+            // Keep activeIdx tracking the same video
+            if (activeIdx === _tabDragSrcIdx) {
+              activeIdx = targetIdx;
+            } else if (_tabDragSrcIdx < activeIdx && targetIdx >= activeIdx) {
+              activeIdx--;
+            } else if (_tabDragSrcIdx > activeIdx && targetIdx <= activeIdx) {
+              activeIdx++;
+            }
+            // Remap clipOrder uploadIds are stable so no change needed there
+            saveSession();
+            renderTabs();
+            renderTimestamps();
+          });
+
           btn.addEventListener("click", () => {
             if (v.previewUrl) switchTab(i);
           });
@@ -1837,7 +1892,12 @@
         advancedPendingStart = null;
         updateAdvancedRecordingUI();
         if (clipOrder !== null) {
-          clipOrder.push({ uploadId: videos[activeIdx].uploadId, start: startT, end: endT, type: "clip" });
+          clipOrder.push({
+            uploadId: videos[activeIdx].uploadId,
+            start: startT,
+            end: endT,
+            type: "clip",
+          });
           updateOrderActiveBar();
         }
         renderTimestamps();
