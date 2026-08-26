@@ -341,8 +341,13 @@ def preclip():
 def _do_preclip(key: str, video_path: str, start: float, duration: float, out_path: str, pre: float, post: float) -> None:
     try:
         mm.extract_clip(video_path, start, duration, out_path)
+        # Treat a 0-byte output as a failure (ffmpeg wrote nothing)
+        if not Path(out_path).exists() or Path(out_path).stat().st_size == 0:
+            Path(out_path).unlink(missing_ok=True)
+            raise RuntimeError("ffmpeg produced an empty file (timestamp may be past video end)")
         _preclips[key] = {"status": "ready", "path": out_path, "pre": pre, "post": post}
     except Exception as e:
+        Path(out_path).unlink(missing_ok=True)  # remove partial/empty file on failure
         _preclips[key] = {"status": "error", "error": str(e)}
 
 
