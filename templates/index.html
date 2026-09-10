@@ -674,6 +674,35 @@
         border-color: #4a4080;
         color: #9090c0;
       }
+      #regen-preclips-btn {
+        padding: 8px 0;
+        background: none;
+        border: 1px solid #1e1f2a;
+        border-radius: 9px;
+        color: #5a5a80;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+      #regen-preclips-btn:hover:not(:disabled) {
+        border-color: #333;
+        color: #9090c0;
+      }
+      #regen-preclips-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      #regen-progress {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #regen-label {
+        font-size: 0.74rem;
+        color: #888;
+      }
       #order-active-bar {
         display: none;
         font-size: 0.74rem;
@@ -1283,6 +1312,13 @@
             </select>
           </div>
           <button id="reorder-btn">⠿ Reorder Clips</button>
+          <button id="regen-preclips-btn">🔄 Regenerate Preclips</button>
+          <div id="regen-progress">
+            <div class="progress-track">
+              <div class="progress-fill" id="regen-fill"></div>
+            </div>
+            <span id="regen-label"></span>
+          </div>
           <button id="select-generate-btn" disabled>
             ☑ Generate Selected…
           </button>
@@ -1382,6 +1418,10 @@
       const preInput = document.getElementById("pre-input");
       const postInput = document.getElementById("post-input");
       const transitionSelect = document.getElementById("transition-select");
+      const regenBtn = document.getElementById("regen-preclips-btn");
+      const regenProgress = document.getElementById("regen-progress");
+      const regenFill = document.getElementById("regen-fill");
+      const regenLabel = document.getElementById("regen-label");
 
       // ─────────────────────────────────────────────
       // App mode (Simple / Advanced)
@@ -2351,6 +2391,88 @@
         settings.transition = parseFloat(transitionSelect.value);
         saveSession();
       });
+
+      // ─────────────────────────────────────────────
+      // Regenerate preclips (force re-extract from source)
+      // ─────────────────────────────────────────────
+      function collectRegenClips() {
+        const clips = [];
+        for (const v of videos) {
+          if (!v.uploadId) continue;
+          for (const ts of v.timestamps) {
+            if (ts.start !== undefined) continue; // advanced clips don't use preclip caching
+            clips.push({ upload_id: v.uploadId, timestamp: ts.t });
+          }
+        }
+        return clips;
+      }
+
+      regenBtn.addEventListener("click", async () => {
+        const clips = collectRegenClips();
+        if (clips.length === 0) {
+          alert("No clips to regenerate yet.");
+          return;
+        }
+        if (
+          !confirm(
+            `Re-extract all ${clips.length} preclip(s) from the original video(s)? This may take a moment.`,
+          )
+        )
+          return;
+
+        regenBtn.disabled = true;
+        regenProgress.style.display = "flex";
+        regenFill.style.width = "0%";
+        regenLabel.textContent = "Starting…";
+
+        try {
+          const res = await fetch("/preclips/regenerate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clips,
+              pre: settings.pre,
+              post: settings.post,
+            }),
+          });
+          const { job_id, error } = await res.json();
+          if (error) {
+            regenProgress.style.display = "none";
+            regenBtn.disabled = false;
+            alert("Could not start regeneration: " + error);
+            return;
+          }
+          pollRegenJob(job_id);
+        } catch (e) {
+          regenProgress.style.display = "none";
+          regenBtn.disabled = false;
+          alert("Could not start regeneration: " + e);
+        }
+      });
+
+      function pollRegenJob(jobId) {
+        const iv = setInterval(async () => {
+          const r = await fetch(`/preclips/regenerate/status/${jobId}`);
+          const d = await r.json();
+          regenLabel.textContent = d.progress || "Working…";
+          regenFill.style.width = (d.pct ?? 0) + "%";
+
+          if (d.status === "done") {
+            clearInterval(iv);
+            regenProgress.style.display = "none";
+            regenBtn.disabled = false;
+            alert("Preclips regenerated successfully.");
+          } else if (d.status === "error") {
+            clearInterval(iv);
+            regenProgress.style.display = "none";
+            regenBtn.disabled = false;
+            alert(
+              "Some preclips failed to regenerate:\n\n" +
+                (d.errors ? d.errors.join("\n") : d.error || "unknown error"),
+            );
+          }
+        }, 1200);
+      }
 
       // ─────────────────────────────────────────────
       // Generate montage

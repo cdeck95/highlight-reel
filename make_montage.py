@@ -142,13 +142,55 @@ def _check_ffmpeg() -> None:
 
 
 def _clip_duration(path: str) -> float:
+    """Return a clip's duration in seconds.
+
+    Falls back to the video stream's own duration when the container-level
+    format duration is unavailable (ffprobe reports 'N/A' for some clips,
+    e.g. ones with an unusual/partial moov atom).
+    """
     r = subprocess.run(
         ["ffprobe", "-v", "error",
          "-show_entries", "format=duration",
          "-of", "csv=p=0", path],
         capture_output=True, text=True, check=True,
     )
-    return float(r.stdout.strip())
+    raw = r.stdout.strip()
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+
+    r2 = subprocess.run(
+        ["ffprobe", "-v", "error",
+         "-select_streams", "v:0",
+         "-show_entries", "stream=duration",
+         "-of", "csv=p=0", path],
+        capture_output=True, text=True, check=True,
+    )
+    raw2 = r2.stdout.strip()
+    try:
+        return float(raw2)
+    except ValueError:
+        raise RuntimeError(
+            f"could not determine duration for {path!r} "
+            f"(ffprobe returned format={raw!r}, stream={raw2!r}); "
+            "the file may be corrupt or empty — try regenerating preclips"
+        )
+
+
+def _verify_clip_has_frames(path: str) -> int:
+    """Return the decoded video frame count for an extracted clip (0 if none/unreadable)."""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error",
+         "-select_streams", "v:0", "-count_frames",
+         "-show_entries", "stream=nb_read_frames",
+         "-of", "csv=p=0", path],
+        capture_output=True, text=True,
+    )
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return 0
 
 
 def extract_clip(src: str, start: float, duration: float, out: str) -> None:
@@ -168,7 +210,21 @@ def extract_clip(src: str, start: float, duration: float, out: str) -> None:
         "-movflags", "+faststart",
         out,
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors="replace") if e.stderr else ""
+        raise RuntimeError(
+            f"ffmpeg failed extracting {start:.2f}s+{duration:.2f}s from {src!r}: "
+            f"{stderr.strip().splitlines()[-1] if stderr.strip() else 'unknown error'}"
+        ) from e
+
+    if _verify_clip_has_frames(out) <= 0:
+        raise RuntimeError(
+            f"clip at {start:.2f}s+{duration:.2f}s from {src!r} has no readable video "
+            "frames \u2014 the timestamp is likely at/past the end of the source video "
+            "(or was clipped to nothing); try adjusting or removing that clip"
+        )
 
 
 def build_montage_hard_cut(clips: list, output: str) -> None:
@@ -197,10 +253,17 @@ def build_montage_hard_cut(clips: list, output: str) -> None:
             output,
         ]
     )
-    subprocess.run(cmd, check=True, capture_output=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors="replace") if e.stderr else ""
+        raise RuntimeError(
+            f"ffmpeg failed assembling hard-cut montage: "
+            f"{stderr.strip().splitlines()[-1] if stderr.strip() else 'unknown error'}"
+        ) from e
 
 
-def build_montage_xfade(clips: list, output: str, transition: float) -> None:
+def build_montage_xfade(clips: list, output: str, transition: float, durations: list = None) -> None:
     """Join clips with video xfade + audio acrossfade transitions.
 
     xfade offset for transition i (0-indexed):
@@ -209,9 +272,23 @@ def build_montage_xfade(clips: list, output: str, transition: float) -> None:
     acrossfade automatically detects end-of-stream for each input (overlap=1),
     so no explicit offset is needed there; chaining works by using the merged
     stream from the previous step as the next left-hand input.
+
+    `durations`, if given, are the already-known requested clip lengths and
+    are used instead of re-probing each file with ffprobe (some encoders
+    produce files whose container-level duration metadata ffprobe can't read
+    even though the file itself plays back fine).
     """
     n = len(clips)
-    durations = [_clip_duration(c) for c in clips]
+    if durations is not None:
+        if len(durations) != n:
+            raise ValueError("durations must have the same length as clips")
+    else:
+        durations = []
+        for i, c in enumerate(clips):
+            try:
+                durations.append(_clip_duration(c))
+            except Exception as e:
+                raise RuntimeError(f"clip {i + 1} of {n} ({c}): {e}") from e
 
     inputs: list = []
     for c in clips:
@@ -252,7 +329,14 @@ def build_montage_xfade(clips: list, output: str, transition: float) -> None:
             output,
         ]
     )
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode(errors="replace") if e.stderr else ""
+        raise RuntimeError(
+            f"ffmpeg failed assembling crossfade montage: "
+            f"{stderr.strip().splitlines()[-1] if stderr.strip() else 'unknown error'}"
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -348,13 +432,14 @@ def main() -> None:
                 clips_by_idx[n] = clip_path
 
         clips = [clips_by_idx[n] for n in sorted(clips_by_idx)]
+        durations = [tasks[n - 1][4] for n in sorted(clips_by_idx)]
 
         print()
         print("Assembling montage …", end=" ", flush=True)
         if args.transition == 0 or len(clips) == 1:
             build_montage_hard_cut(clips, output)
         else:
-            build_montage_xfade(clips, output, args.transition)
+            build_montage_xfade(clips, output, args.transition, durations=durations)
         print("done")
 
     print(f"\n→ {output}")

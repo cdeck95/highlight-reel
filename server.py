@@ -37,9 +37,10 @@ for _d in (UPLOAD_DIR, OUTPUT_DIR, PRECLIP_DIR):
 
 SESSION_FILE = Path("session.json")
 
-_uploads: dict  = {}  # upload_id  → status dict
-_jobs: dict     = {}  # job_id     → status dict
-_preclips: dict = {}  # preclip_key → status dict
+_uploads: dict     = {}  # upload_id  → status dict
+_jobs: dict        = {}  # job_id     → status dict
+_preclips: dict    = {}  # preclip_key → status dict
+_regen_jobs: dict  = {}  # regen job_id → status dict
 
 ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".mkv", ".avi", ".m4v", ".mts", ".ts"}
 
@@ -110,26 +111,39 @@ def _source_transcode(uid: str, orig_path: Path) -> None:
 
     Always runs in the background after upload so preclip/generate work from a
     small, already-downscaled file rather than decoding raw 4K GoPro footage.
+    Verifies the output isn't truncated (e.g. from an interrupted transcode)
+    before marking it ready, since a short "successful" file with clean
+    metadata will otherwise silently produce empty clips near/after its cutoff.
     """
     import subprocess
     source_path = UPLOAD_DIR / f"source_{uid}.mp4"
+    cmd = [
+        "ffmpeg", "-y", "-i", str(orig_path),
+        "-vf", "scale=-2:min(ih\\,1080),format=yuv420p",
+        "-fps_mode", "cfr",       # force constant frame rate (normalises VFR sources)
+        "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+        "-maxrate", "5M", "-bufsize", "10M",
+        "-color_range", "tv", "-colorspace", "bt709",
+        "-color_trc", "bt709", "-color_primaries", "bt709",
+        "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-ac", "2",
+        "-af", "aresample=async=1000",  # resync audio to video timeline
+        "-movflags", "+faststart",
+        str(source_path),
+    ]
     try:
-        subprocess.run([
-            "ffmpeg", "-y", "-i", str(orig_path),
-            "-vf", "scale=-2:min(ih\\,1080),format=yuv420p",
-            "-fps_mode", "cfr",       # force constant frame rate (normalises VFR sources)
-            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-            "-maxrate", "5M", "-bufsize", "10M",
-            "-color_range", "tv", "-colorspace", "bt709",
-            "-color_trc", "bt709", "-color_primaries", "bt709",
-            "-c:a", "aac", "-ar", "44100", "-b:a", "192k", "-ac", "2",
-            "-af", "aresample=async=1000",  # resync audio to video timeline
-            "-movflags", "+faststart",
-            str(source_path),
-        ], check=True, capture_output=True)
+        subprocess.run(cmd, check=True, capture_output=True)
+        orig_duration = mm._clip_duration(str(orig_path))
+        source_duration = mm._clip_duration(str(source_path))
+        if source_duration < orig_duration * 0.98 - 1.0:
+            raise RuntimeError(
+                f"transcoded source is truncated ({source_duration:.1f}s vs "
+                f"original {orig_duration:.1f}s)"
+            )
         _uploads[uid]["source_status"] = "ready"
     except Exception as e:
+        source_path.unlink(missing_ok=True)  # don't leave a bad file for _get_source_path to pick up
         _uploads[uid]["source_status"] = "error"
+        _uploads[uid]["source_error"] = str(e)
 
 
 def _get_source_path(uid: str) -> Path:
@@ -181,6 +195,7 @@ def session_clear():
         if f.is_file():
             f.unlink(missing_ok=True)
     _preclips.clear()
+    _regen_jobs.clear()
     SESSION_FILE.unlink(missing_ok=True)
     return jsonify({"ok": True})
 
@@ -351,6 +366,94 @@ def _do_preclip(key: str, video_path: str, start: float, duration: float, out_pa
         _preclips[key] = {"status": "error", "error": str(e)}
 
 
+@app.route("/preclips/regenerate", methods=["POST"])
+def preclips_regenerate():
+    """Force re-extraction of preclips for a batch of (upload_id, timestamp) pairs.
+
+    Deletes any cached clip/status first so stale or corrupt preclips (a common
+    cause of montage generation failures) can't be reused.
+    """
+    data = request.get_json(force=True)
+    clip_list = data.get("clips", [])
+    if not clip_list:
+        return jsonify({"error": "no clips provided"}), 400
+
+    pre  = max(0.5, min(float(data.get("pre",  4.5)), 30.0))
+    post = max(0.5, min(float(data.get("post", 2.5)), 30.0))
+
+    tasks = []
+    for entry in clip_list:
+        uid = entry.get("upload_id", "")
+        ts = entry.get("timestamp")
+        if not _valid_uuid(uid) or not isinstance(ts, (int, float)):
+            continue
+        if _uploads.get(uid, {}).get("status") != "ready":
+            continue
+        source_path = _get_source_path(uid)
+        if not source_path.exists():
+            continue
+        tasks.append((uid, str(source_path), float(ts)))
+
+    if not tasks:
+        return jsonify({"error": "no valid/ready clips to regenerate"}), 400
+
+    job_id = str(uuid.uuid4())
+    _regen_jobs[job_id] = {
+        "status": "running", "progress": "Starting…", "pct": 0,
+        "done": 0, "total": len(tasks), "errors": [],
+    }
+    threading.Thread(
+        target=_run_regen, args=(job_id, tasks, pre, post), daemon=True,
+    ).start()
+    return jsonify({"job_id": job_id})
+
+
+def _run_regen(job_id: str, tasks: list, pre: float, post: float) -> None:
+    total = len(tasks)
+    done_lock = threading.Lock()
+    done_count = [0]
+    errors: list = []
+
+    def _one(task):
+        uid, video_path, ts = task
+        key = _preclip_key(uid, ts)
+        out_path = PRECLIP_DIR / f"{key}.mp4"
+        out_path.unlink(missing_ok=True)
+        _preclips.pop(key, None)
+        start = max(0.0, ts - pre)
+        duration = (ts + post) - start
+        try:
+            mm.extract_clip(video_path, start, duration, str(out_path))
+            if not out_path.exists() or out_path.stat().st_size == 0:
+                raise RuntimeError("ffmpeg produced an empty file (timestamp may be past video end)")
+            _preclips[key] = {"status": "ready", "path": str(out_path), "pre": pre, "post": post}
+        except Exception as e:
+            out_path.unlink(missing_ok=True)
+            _preclips[key] = {"status": "error", "error": str(e)}
+            errors.append(f"{Path(video_path).name} @ {mm.fmt_ts(ts)}: {e}")
+        with done_lock:
+            done_count[0] += 1
+            _regen_jobs[job_id]["done"] = done_count[0]
+            _regen_jobs[job_id]["progress"] = f"Regenerating clip {done_count[0]} of {total}…"
+            _regen_jobs[job_id]["pct"] = int(done_count[0] / total * 100)
+
+    max_workers = min(os.cpu_count() or 2, 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        list(pool.map(_one, tasks))
+
+    if errors:
+        _regen_jobs[job_id].update({"status": "error", "error": "; ".join(errors), "errors": errors})
+    else:
+        _regen_jobs[job_id].update({"status": "done", "pct": 100})
+
+
+@app.route("/preclips/regenerate/status/<job_id>")
+def preclips_regenerate_status(job_id: str):
+    if not _valid_uuid(job_id):
+        abort(400)
+    return jsonify(_regen_jobs.get(job_id, {"status": "not_found"}))
+
+
 # ---------------------------------------------------------------------------
 # Montage generation
 # ---------------------------------------------------------------------------
@@ -421,18 +524,21 @@ def _run_montage(job_id: str, sources: list, output_path: str,
             for _, _, raw_ts, explicit_start, _ in sources
         )
         for uid, video_path, raw_ts, explicit_start, explicit_end in sources:
+            vid_name = Path(video_path).name
             if explicit_start is not None:
                 # Advanced mode: explicit start/end timestamps
                 clip_num += 1
                 start = explicit_start
                 duration = explicit_end - explicit_start
-                tasks.append((clip_num, video_path, start, duration, None))
+                label = f"{vid_name} @ {mm.fmt_ts(start)}\u2013{mm.fmt_ts(explicit_end)}"
+                tasks.append((clip_num, video_path, start, duration, None, label))
             else:
                 for ts in [mm.parse_timestamp(str(t)) for t in raw_ts]:
                     clip_num += 1
                     start = max(0.0, ts - pre)
                     duration = (ts + post) - start
-                    tasks.append((clip_num, video_path, start, duration, _preclip_key(uid, ts)))
+                    label = f"{vid_name} @ {mm.fmt_ts(ts)}"
+                    tasks.append((clip_num, video_path, start, duration, _preclip_key(uid, ts), label))
 
         with tempfile.TemporaryDirectory(prefix="montage_") as tmpdir:
             clips_by_num: dict = {}
@@ -442,7 +548,7 @@ def _run_montage(job_id: str, sources: list, output_path: str,
             def _extract(task):
                 if _jobs[job_id].get("cancel"):
                     return task[0], None
-                n, video_path, start, duration, key = task
+                n, video_path, start, duration, key, label = task
                 # Re-use pre-extracted clip only if key exists and dimensions match
                 if key is not None:
                     pre_info = _preclips.get(key, {})
@@ -459,7 +565,10 @@ def _run_montage(job_id: str, sources: list, output_path: str,
                                 _jobs[job_id]["pct"] = int(done_count[0] / total * 85)
                             return n, cached
                 clip_path = os.path.join(tmpdir, f"clip_{n:04d}.mp4")
-                mm.extract_clip(video_path, start, duration, clip_path)
+                try:
+                    mm.extract_clip(video_path, start, duration, clip_path)
+                except Exception as e:
+                    raise RuntimeError(f"Clip {n} ({label}) failed to extract: {e}") from e
                 with done_lock:
                     done_count[0] += 1
                     _jobs[job_id]["progress"] = (
@@ -480,13 +589,22 @@ def _run_montage(job_id: str, sources: list, output_path: str,
                 return
 
             clips = [clips_by_num[n] for n in sorted(clips_by_num)]
+            durations_by_num = {n: d for n, _, _, d, _, _ in tasks}
+            durations = [durations_by_num[n] for n in sorted(clips_by_num)]
+            labels = [label for _, _, _, _, _, label in sorted(tasks, key=lambda t: t[0])
+                      if label]
 
             _jobs[job_id]["progress"] = "Assembling montage…"
             _jobs[job_id]["pct"] = 92
-            if transition == 0 or len(clips) == 1:
-                mm.build_montage_hard_cut(clips, output_path)
-            else:
-                mm.build_montage_xfade(clips, output_path, transition)
+            try:
+                if transition == 0 or len(clips) == 1:
+                    mm.build_montage_hard_cut(clips, output_path)
+                else:
+                    mm.build_montage_xfade(clips, output_path, transition, durations=durations)
+            except Exception as e:
+                raise RuntimeError(
+                    f"{e}  (clips in this montage: {', '.join(labels)})"
+                ) from e
 
         _jobs[job_id].update({
             "status": "done",
